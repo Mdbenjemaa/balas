@@ -9,7 +9,7 @@ import { ChunkedSource, DATA_URL, OfflineFirstSource, PMTILES_URL } from '../lib
 import { PREVIEW } from '../lib/env';
 import type { LonLat } from '../lib/geo';
 import { FILTERS, type Filters } from '../lib/layers';
-import { buildStyle, glyphProtocol, INTERACTIVE_LAYERS, type Basemap, type Overlays } from './style';
+import { buildStyle, glyphProtocol, INTERACTIVE_LAYERS, PK_LAYERS, pkFilter, type Basemap, type Overlays } from './style';
 
 setWorkerUrl(workerUrl);
 
@@ -28,6 +28,16 @@ function setSource(m: MapLibreMap | null, id: string, data: FeatureCollection | 
   else m.once('styledata', apply);
 }
 
+/** Lignes corrigées : repères PK recalculés, repères d'origine masqués. */
+function applyPkFix(m: MapLibreMap, pkfix: Overlays['pkfix']) {
+  const apply = () => {
+    setSource(m, 'pkfix', pkfix?.fc ?? null);
+    for (const id of PK_LAYERS) if (m.getLayer(id)) m.setFilter(id, pkFilter(pkfix?.codes ?? []));
+  };
+  if (m.getLayer(PK_LAYERS[0])) apply();
+  else m.once('styledata', apply);
+}
+
 export interface FocusRequest {
   center: LonLat;
   zoom?: number;
@@ -41,24 +51,26 @@ interface Props {
   target: FeatureCollection | null;
   acces: FeatureCollection | null;
   team: FeatureCollection | null;
+  pkfix: Overlays['pkfix'];
   focus: FocusRequest | null;
   onFeature: (f: MapGeoJSONFeature, at: LonLat) => void;
   onLongPress: (at: LonLat) => void;
   onMapTap: () => void;
 }
 
-export function MapView({ basemap, filters, me, target, acces, team, focus, onFeature, onLongPress, onMapTap }: Props) {
+export function MapView({ basemap, filters, me, target, acces, team, pkfix, focus, onFeature, onLongPress, onMapTap }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const latest = useRef({ filters, me, target, acces, team, onFeature, onLongPress, onMapTap });
-  latest.current = { filters, me, target, acces, team, onFeature, onLongPress, onMapTap };
-  const overlays = (): Overlays => ({ me: latest.current.me, target: latest.current.target, acces: latest.current.acces, team: latest.current.team });
+  const latest = useRef({ filters, me, target, acces, team, pkfix, onFeature, onLongPress, onMapTap });
+  latest.current = { filters, me, target, acces, team, pkfix, onFeature, onLongPress, onMapTap };
+  const overlays = (): Overlays => ({ me: latest.current.me, target: latest.current.target, acces: latest.current.acces, team: latest.current.team, pkfix: latest.current.pkfix });
   const syncOverlays = (m: MapLibreMap) => {
     const o = overlays();
     setSource(m, 'me', o.me);
     setSource(m, 'target', o.target);
     setSource(m, 'acces', o.acces);
     setSource(m, 'team', o.team);
+    applyPkFix(m, o.pkfix);
   };
 
   // Création de la carte.
@@ -164,6 +176,9 @@ export function MapView({ basemap, filters, me, target, acces, team, focus, onFe
   useEffect(() => setSource(map.current, 'target', target), [target]);
   useEffect(() => setSource(map.current, 'acces', acces), [acces]);
   useEffect(() => setSource(map.current, 'team', team), [team]);
+  useEffect(() => {
+    if (map.current) applyPkFix(map.current, pkfix);
+  }, [pkfix]);
 
   // Recentrage demandé.
   useEffect(() => {

@@ -266,11 +266,19 @@ export function InfoSheet(p: { manifest: Manifest | null; onClose: () => void })
             Contrôle sur {q.pk_recalage.validation_points?.toLocaleString('fr-FR')} repères masqués : écart médian{' '}
             {q.pk_recalage.erreur_mediane_m} m, 90 % sous {q.pk_recalage.erreur_p90_m} m.
           </li>
-          <li>
-            Contrôle indépendant sur {q.controle_bornes_osm.bornes_comparees?.toLocaleString('fr-FR')} bornes kilométriques
-            relevées dans OpenStreetMap : écart médian {q.controle_bornes_osm.ecart_median_m} m, 75 % sous{' '}
-            {q.controle_bornes_osm.ecart_p75_m} m.
-          </li>
+          {q.controle_bornes_osm.bornes ? (
+            <li>
+              Recalage aussi sur {q.reperes.borne?.toLocaleString('fr-FR')} bornes kilométriques relevées dans OpenStreetMap.
+              Contrôle sur {q.controle_bornes_osm.bornes.toLocaleString('fr-FR')} bornes mises de côté : 90 % sous{' '}
+              {String(q.controle_bornes_osm.apres_p90_m).replace('.', ',')} m (avant : {String(q.controle_bornes_osm.avant_p90_m).replace('.', ',')} m).
+              Là où aucune borne n’est relevée, l’écart peut dépasser 100 m : corrige-le devant une borne.
+            </li>
+          ) : (
+            <li>
+              Contrôle sur {q.controle_bornes_osm.bornes_comparees?.toLocaleString('fr-FR')} bornes kilométriques relevées dans
+              OpenStreetMap : écart médian {q.controle_bornes_osm.ecart_median_m} m, 75 % sous {q.controle_bornes_osm.ecart_p75_m} m.
+            </li>
+          )}
           <li>À cela s’ajoute l’imprécision du GPS du téléphone (souvent 5 à 15 m).</li>
         </ul>
       )}

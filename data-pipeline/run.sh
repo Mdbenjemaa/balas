@@ -15,8 +15,12 @@ mkdir -p raw
 curl -L -C - -o raw/france.osm.pbf https://download.openstreetmap.fr/extracts/europe/france.osm.pbf
 
 # 3. Traitements
-python3 build_sncf.py raw/sncf build              # lignes, recalage des PK
 python3 extract_osm.py raw/france.osm.pbf build/osm.json   # signaux, bornes, tunnels, sous-stations
+# Recalage des PK sur les repères SNCF et les bornes OSM : un passage de contrôle (1 borne sur 5 mise de côté)
+# mesure la précision, puis le passage définitif utilise toutes les bornes.
+RR_CONTROLE=1 python3 build_sncf.py raw/sncf build-controle build/osm.json
+cp build-controle/controle_osm.json build/
+python3 build_sncf.py raw/sncf build build/osm.json
 python3 build_products.py build "$APP_DATA" tiles-src      # cases, fiches de ligne, couches
 node --max-old-space-size=6000 tile.mjs tiles-src build/tiles.bin
 python3 pack_pmtiles.py build/tiles.bin "$APP_DATA/rail.pmtiles"

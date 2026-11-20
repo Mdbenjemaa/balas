@@ -1,3 +1,4 @@
+import { corrige } from './corrections';
 import { bboxAround, closestOnSegment, localProjector, type LonLat } from './geo';
 import type { Cell } from './data';
 
@@ -7,8 +8,10 @@ export interface LineCandidate {
   statut: string;
   /** Distance (m) entre la position et l'axe de la ligne. */
   dist: number;
-  /** PK au droit de la position (km). */
+  /** PK au droit de la position (km), corrections de bornes comprises. */
   pk: number;
+  /** PK calculé sans les corrections de bornes (km). */
+  pkRaw: number;
   /** Point de la ligne au droit de la position. */
   point: LonLat;
   /** Sens des PK croissants à cet endroit (degrés, 0 = nord). */
@@ -72,7 +75,8 @@ export function matchInCells(cells: Cell[], p: LonLat, radius: number): Match {
             rg,
             statut,
             dist: hit.dist,
-            pk: pkA + (pkB - pkA) * hit.t,
+            pk: corrige(code, pkA + (pkB - pkA) * hit.t),
+            pkRaw: pkA + (pkB - pkA) * hit.t,
             point: proj.toLonLat(hit.x, hit.y),
             bearing: ((Math.atan2(fx, fy) * 180) / Math.PI + 360) % 360,
           });

@@ -1,5 +1,7 @@
 import { FetchSource, type RangeResponse, type Source } from 'pmtiles';
+import { correctionsOf, correctionsVersion, corrige } from './corrections';
 import { PREVIEW } from './env';
+import { decodeGeom } from './pk';
 
 /** Dossier des données, relatif à l'adresse de l'appli (marche aussi dans un sous-dossier). */
 export const DATA_URL = new URL(`${import.meta.env.BASE_URL}data/`, location.href).href;
@@ -95,7 +97,54 @@ export function loadCell(key: string, known: Set<string>): Promise<Cell | null> 
 }
 
 const lineCache = new Map<string, Promise<LineDoc>>();
-export function loadLine(code: string): Promise<LineDoc> {
+/** Points dont le PK a été calculé par l'appli (rattachés depuis OpenStreetMap) : on leur applique les corrections. */
+const COMPUTED_KINDS = /^(sig_|tunnel|sst|borne)/;
+
+/** Fiche de ligne avec les corrections de bornes appliquées (géométrie et points calculés). */
+function applyCorrections(doc: LineDoc): LineDoc {
+  if (!correctionsOf(doc.code).length) return doc;
+  const fix = (pk: number) => corrige(doc.code, pk);
+  return {
+    ...doc,
+    troncons: doc.troncons.map((t) => {
+      if (!t.g) return t;
+      const g: number[] = [];
+      let px = 0;
+      let py = 0;
+      let pp = 0;
+      for (const [lon, lat, pk] of decodeGeom(t.g)) {
+        const x = Math.round(lon * 1e5);
+        const y = Math.round(lat * 1e5);
+        const p = Math.round(fix(pk) * 1000);
+        g.push(x - px, y - py, p - pp);
+        px = x;
+        py = y;
+        pp = p;
+      }
+      return { ...t, g };
+    }),
+    points: doc.points.map((pt) => {
+      if (!COMPUTED_KINDS.test(pt[1])) return pt;
+      const out = pt.slice() as LinePoint;
+      out[0] = fix(pt[0]);
+      if (typeof pt[6] === 'number') out[6] = fix(pt[6]);
+      return out;
+    }),
+  };
+}
+const corrected = new Map<string, { v: number; doc: LineDoc }>();
+
+export async function loadLine(code: string): Promise<LineDoc> {
+  const raw = await loadLineRaw(code);
+  const v = correctionsVersion();
+  const hit = corrected.get(code);
+  if (hit && hit.v === v) return hit.doc;
+  const doc = applyCorrections(raw);
+  corrected.set(code, { v, doc });
+  return doc;
+}
+
+function loadLineRaw(code: string): Promise<LineDoc> {
   let p = lineCache.get(code);
   if (!p) {
     p = (PREVIEW ? fromPack<LineDoc>('l', code) : getJson<LineDoc>(`${DATA_URL}lines/${code}.json`)).catch((e) => {

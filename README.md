@@ -20,6 +20,7 @@ vitesse…). Elle marche sur iPhone et Android, **même sans réseau** une fois 
 | Aller au PK | Depuis ma position (« Aller au PK » sous le PK affiché) ou par la recherche (« 830000 45+200 ») : le PK sur la carte, la distance le long de la ligne et le sens, ce qu'il y a autour, et un itinéraire en voiture (Plans, Google Maps, Waze) |
 | Mes accès | Import d'une carte d'accès exportée de Google My Maps (KML ou KMZ) ou en GeoJSON. Chaque accès reçoit sa ligne et son PK, apparaît sur la carte et dans les listes, et peut servir de destination. Les accès restent dans le téléphone : ils ne sont ni envoyés ni publiés |
 | Espace chantier (comptes) | Bouton « Chantier » : connexion par code personnel. L'administrateur crée les chefs ; le chef crée ses chantiers et ses agents (un code chacun), les affecte, prépare la carte (zone entre deux PK, points, accès, panneaux, import KML) et a le tableau de bord (signalements avec photos, rapports de fin de poste signés en PDF, export Excel). L'agent voit son chantier et signale des anomalies, même sans réseau. Sur ordinateur, la carte et le panneau sont côte à côte |
+| Corriger le PK | Devant une borne, « Corriger ici » : on tape le PK de la borne. La correction s'applique tout de suite sur le téléphone, recale les PK de la ligne autour (1,5 km, ou toute la ligne si l'administrateur le choisit) et part à l'administrateur, qui la valide pour tous |
 | Suivre en marchant | Met à jour le PK en continu (écran allumé) |
 | Me placer ici | Appui long sur la carte : repérage sans GPS (préparer une intervention, GPS mauvais) |
 | Carte et filtres | PK tous les 100 m, bornes OSM, gares, quais, voies et numéros, PN, tunnels, ponts, sous-stations, carrés et sémaphores, avertissements, TIV et pancartes Z/R, signaux électriques, vitesses et électrification en couleurs ; fond plan ou photo aérienne IGN |
@@ -33,7 +34,7 @@ le PK et la position (PN, gares, ponts-route, quais, extrémités de voies et de
 | Contrôle | Résultat |
 | --- | --- |
 | Repère masqué ainsi que tous ses voisins à moins de 200 m (7 372 essais) | écart médian 0,8 m ; 75 % sous 7 m ; 90 % sous 29 m |
-| 13 124 bornes kilométriques réelles relevées dans OpenStreetMap (source indépendante) | écart médian 2 m ; 75 % sous 8 m ; 90 % sous 55 m |
+| Recalage complémentaire sur 12 985 bornes kilométriques relevées dans OpenStreetMap ; contrôle sur 2 608 bornes mises de côté | avant : 90 % sous 42 m ; après : écart médian 0,1 m, 90 % sous 5 m, 95 % sous 21 m |
 | Sans recalage (interpolation entre début et fin de tronçon) | écart médian 22 m ; 90 % sous 188 m |
 
 S'y ajoute l'erreur du GPS du téléphone. Les données SNCF Réseau datent de 2020 à 2022 : une

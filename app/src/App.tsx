@@ -24,9 +24,12 @@ import { teamFeatures } from './lib/equipe/features';
 import { positionFrom } from './lib/equipe/position';
 import type { NewItem } from './lib/equipe/store';
 import { useEquipe } from './lib/equipe/useEquipe';
+import { CorrectionForm, type CorrectionTarget } from './components/CorrectionForm';
+import { envoyerEnAttente, onCorrections, refreshCorrections } from './lib/corrections';
+import { correctedPkMarks } from './lib/pkmarks';
 import type { Basemap } from './map/style';
 
-type Panel = 'none' | 'filters' | 'offline' | 'info' | 'chantier' | 'signal' | 'repere' | 'rapport';
+type Panel = 'none' | 'filters' | 'offline' | 'info' | 'chantier' | 'signal' | 'repere' | 'rapport' | 'correction';
 const TEAM_LAYERS = new Set(['u-sig', 'u-rep', 'u-zone']);
 
 export default function App() {
@@ -54,6 +57,31 @@ export default function App() {
   const [teamFC, setTeamFC] = useState<FeatureCollection | null>(null);
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [rapport, setRapport] = useState<RapportResume | null>(null);
+  const [corrTarget, setCorrTarget] = useState<CorrectionTarget | null>(null);
+  const [corrVersion, setCorrVersion] = useState(0);
+  const [pkfix, setPkfix] = useState<Awaited<ReturnType<typeof correctedPkMarks>> | null>(null);
+
+  // Corrections de PK validées : au démarrage, au retour du réseau ; propositions en attente renvoyées.
+  useEffect(() => {
+    const sync = () => {
+      void refreshCorrections(true);
+      void envoyerEnAttente(null);
+    };
+    sync();
+    window.addEventListener('online', sync);
+    const off = onCorrections(() => setCorrVersion((v) => v + 1));
+    return () => {
+      window.removeEventListener('online', sync);
+      off();
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void correctedPkMarks().then((r) => !cancelled && setPkfix(r.codes.length ? r : null));
+    return () => {
+      cancelled = true;
+    };
+  }, [corrVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +89,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [eq.view]);
+  }, [eq.view, corrVersion]);
   const acquisition = useRef<Acquisition | null>(null);
   const stopFollow = useRef<(() => void) | null>(null);
   const busy = useRef(false);
@@ -103,6 +131,14 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [declared]);
+
+  // Nouvelle correction de PK : on recalcule le PK affiché à la même position.
+  useEffect(() => {
+    if (lastFix.current && loc.phase === 'result') {
+      void analyse(lastFix.current.fix, lastFix.current.mode, loc.chosen?.code, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [corrVersion]);
 
   const locate = () => {
     if (PREVIEW) {
@@ -312,6 +348,7 @@ export default function App() {
         target={targetFC}
         acces={accesFC}
         team={teamFC}
+        pkfix={pkfix}
         focus={focus}
         onFeature={(f, at) => {
           if (TEAM_LAYERS.has(f.layer.id) && f.properties?.id) {
@@ -409,6 +446,15 @@ export default function App() {
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}
         onGoPk={(code, text) => void goToPk(code, text)}
         acces={acces}
+        onCorrect={() => {
+          if (loc.phase !== 'result' || !loc.chosen) return;
+          setCorrTarget({
+            ligne: loc.chosen.code, lineName: loc.doc?.name ?? null, at: loc.fix.lonlat,
+            accuracy: loc.mode === 'manuel' ? null : Math.round(loc.fix.accuracy), manual: loc.mode === 'manuel',
+            pkRaw: loc.chosen.pkRaw, pkShown: loc.chosen.pk,
+          });
+          setPanel('correction');
+        }}
         onSignal={inChantier ? openSignal : undefined}
         onRepere={eq.etat?.gere ? () => setPanel('repere') : undefined}
         onFocus={(at) => focusOn(at, 17)}
@@ -445,6 +491,10 @@ export default function App() {
       {panel === 'chantier' && (
         <EspaceSheet
           eq={eq}
+          onFocusAt={(at) => {
+            if (!wide()) setPanel('none');
+            focusOn(at, 17);
+          }}
           currentLine={loc.phase === 'result' && loc.chosen ? { code: loc.chosen.code, pk: loc.chosen.pk } : null}
           onOpenItem={(id, at) => void openTeamItem(id, at)}
           onShowChantier={() => void showChantier()}
@@ -453,6 +503,18 @@ export default function App() {
           onRapport={(r) => {
             setRapport(r);
             setPanel('rapport');
+          }}
+          onClose={() => setPanel('none')}
+        />
+      )}
+      {panel === 'correction' && corrTarget && (
+        <CorrectionForm
+          target={corrTarget}
+          auteur={eq.session?.compte.nom ?? ''}
+          code={eq.session?.code ?? null}
+          onDone={(msg) => {
+            setPanel('none');
+            showToast(msg);
           }}
           onClose={() => setPanel('none')}
         />

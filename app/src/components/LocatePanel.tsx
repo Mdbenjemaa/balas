@@ -42,6 +42,7 @@ interface Props {
   onChoose: (code: string) => void;
   onGoPk: (code: string, text: string) => void;
   acces: AccesSet[];
+  onCorrect: () => void;
   /** Présents quand on fait partie d'un chantier. */
   onSignal?: () => void;
   onRepere?: () => void;
@@ -219,6 +220,12 @@ export function LocatePanel(p: Props) {
 
       <div className="sheet-body">
         {chosen && <PkForm onGo={(text) => p.onGoPk(chosen.code, text)} />}
+        {chosen && (
+          <p className="correct-line small">
+            {Math.abs(chosen.pk - chosen.pkRaw) > 0.001 && <span className="ok">PK recalé sur une borne relevée · </span>}
+            <button className="link-btn" onClick={p.onCorrect}>Pas le PK de la borne ? Corriger ici</button>
+          </p>
+        )}
         {p.onSignal && (
           <div className="btn-row team-actions">
             <button className="btn btn-small btn-signal" onClick={p.onSignal}>⚠ Signaler ici</button>

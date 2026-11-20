@@ -1,5 +1,6 @@
 import type {
   ExpressionSpecification,
+  FilterSpecification,
   LayerSpecification,
   SourceSpecification,
   StyleSpecification,
@@ -157,12 +158,25 @@ export interface Overlays {
   target: FeatureCollection | null;
   acces: FeatureCollection | null;
   team: FeatureCollection | null;
+  /** Repères PK recalculés pour les lignes corrigées, et ces lignes (leurs repères d'origine sont masqués). */
+  pkfix: { codes: string[]; fc: FeatureCollection } | null;
 }
+
+export const PK_LAYERS = ['r-pk-km', 'r-pk-km-label', 'r-pk-hm', 'r-pk-hm-label'];
+
+/** Filtre des repères PK d'origine : on masque ceux des lignes corrigées. */
+export const pkFilter = (codes: string[]) =>
+  codes.length ? (['!', ['in', ['get', 'c'], ['literal', codes]]] as unknown as FilterSpecification) : null;
 
 function overlayLayers(filters: Filters, photo: boolean): LayerSpecification[] {
   const halo = photo ? '#000000' : '#ffffff';
   const team = filters.equipe ? 'visible' : 'none';
+  const pk = filters.pk ? 'visible' : 'none';
   return [
+    { id: 'u-pk-hm', type: 'circle', source: 'pkfix', filter: ['==', ['get', 'km'], 0], minzoom: 14.5, layout: { visibility: pk }, paint: { 'circle-radius': 2, 'circle-color': '#fde68a', 'circle-stroke-color': '#111827', 'circle-stroke-width': 0.8 } },
+    { id: 'u-pk-hm-label', type: 'symbol', source: 'pkfix', filter: ['==', ['get', 'km'], 0], minzoom: 15.5, layout: { visibility: pk, 'text-field': ['get', 'p'], 'text-font': REG, 'text-size': 11, 'text-offset': [0, -0.9], 'text-anchor': 'bottom', 'text-optional': true }, paint: { 'text-color': '#111827', 'text-halo-color': halo, 'text-halo-width': 1.5 } },
+    { id: 'u-pk-km', type: 'circle', source: 'pkfix', filter: ['==', ['get', 'km'], 1], minzoom: 10, layout: { visibility: pk }, paint: { 'circle-radius': 3, 'circle-color': '#facc15', 'circle-stroke-color': '#111827', 'circle-stroke-width': 1 } },
+    { id: 'u-pk-km-label', type: 'symbol', source: 'pkfix', filter: ['==', ['get', 'km'], 1], minzoom: 11, layout: { visibility: pk, 'text-field': ['concat', 'PK ', ['get', 'p']], 'text-font': BOLD, 'text-size': 12, 'text-offset': [0, -1.1], 'text-anchor': 'bottom', 'text-optional': true }, paint: { 'text-color': '#111827', 'text-halo-color': '#facc15', 'text-halo-width': 2 } },
     {
       id: 'u-zone', type: 'line', source: 'team', filter: ['==', ['get', 'k'], 'zone'],
       layout: { visibility: team, 'line-cap': 'round', 'line-join': 'round' },
@@ -242,6 +256,7 @@ export async function buildStyle(basemap: Basemap, filters: Filters, o: Overlays
     target: { type: 'geojson', data: o.target ?? emptyFC() },
     acces: { type: 'geojson', data: o.acces ?? emptyFC() },
     team: { type: 'geojson', data: o.team ?? emptyFC() },
+    pkfix: { type: 'geojson', data: o.pkfix?.fc ?? emptyFC() },
   };
   let baseLayers: LayerSpecification[] = [{ id: 'fond', type: 'background', paint: { 'background-color': basemap === 'photo' ? '#1f2937' : '#eef0ec' } }];
   let sprite: StyleSpecification['sprite'];
@@ -265,7 +280,14 @@ export async function buildStyle(basemap: Basemap, filters: Filters, o: Overlays
     glyphs: GLYPHS,
     ...(sprite ? { sprite } : {}),
     sources,
-    layers: [...baseLayers, ...railLayers(basemap, filters), ...overlayLayers(filters, basemap === 'photo'), ...meLayers()],
+    layers: [
+    ...baseLayers,
+    ...railLayers(basemap, filters).map((l) =>
+      PK_LAYERS.includes(l.id) && o.pkfix?.codes.length ? ({ ...l, filter: pkFilter(o.pkfix.codes)! } as LayerSpecification) : l,
+    ),
+    ...overlayLayers(filters, basemap === 'photo'),
+    ...meLayers(),
+  ],
   };
 }
 

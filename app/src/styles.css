@@ -245,3 +245,9 @@ textarea.text { resize: vertical; min-height: 64px; }
   .sheet-full { height: calc(100% - 90px); }
   .card { right: auto; width: 420px; }
 }
+.correct-line { margin: -4px 0 8px; } .correct-line .link-btn { padding: 0; font-size: 13px; }
+.corr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.corr .item-main { display: flex; flex-direction: column; }
+.corr .item-main small { color: var(--muted); }
+.corr.refusee { opacity: 0.55; }
+.corr.proposee .item-main b:first-child { color: #92400e; }

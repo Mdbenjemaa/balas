@@ -34,7 +34,7 @@ export interface FilterDef {
 export const FILTERS: FilterDef[] = [
   { key: 'equipe', label: 'Mon chantier', hint: 'Signalements, repères, zones et panneaux de l’équipe', group: 'Mes données', on: true, layers: ['u-zone', 'u-zone-label', 'u-rep', 'u-rep-label', 'u-sig', 'u-sig-label'], kinds: [] },
   { key: 'acces', label: 'Mes accès (importés)', hint: 'Carte d’accès importée sur ce téléphone', group: 'Mes données', on: true, layers: ['u-acces', 'u-acces-label'], kinds: ['acces'] },
-  { key: 'pk', label: 'PK calculés', hint: 'Tous les 100 m, recalés sur les repères SNCF', group: 'Repères', on: true, layers: ['r-pk-km', 'r-pk-km-label', 'r-pk-hm', 'r-pk-hm-label'], kinds: [] },
+  { key: 'pk', label: 'PK calculés', hint: 'Tous les 100 m, recalés sur les repères SNCF, les bornes relevées et les corrections', group: 'Repères', on: true, layers: ['r-pk-km', 'r-pk-km-label', 'r-pk-hm', 'r-pk-hm-label', 'u-pk-km', 'u-pk-km-label', 'u-pk-hm', 'u-pk-hm-label'], kinds: [] },
   { key: 'bornes', label: 'Bornes kilométriques (OSM)', hint: 'Bornes réelles relevées par les contributeurs', group: 'Repères', on: false, layers: ['r-bornes', 'r-bornes-label'], kinds: [] },
   { key: 'gares', label: 'Gares', group: 'Infrastructure', on: true, layers: ['r-gares', 'r-gares-label'], kinds: ['gare'] },
   { key: 'quais', label: 'Quais', group: 'Infrastructure', on: true, layers: ['r-quais', 'r-quais-label'], kinds: ['quai'] },

@@ -8,6 +8,7 @@ import type { Equipe } from '../../lib/equipe/useEquipe';
 import { fmtLine, fmtPk } from '../../lib/format';
 import type { LonLat } from '../../lib/geo';
 import { parsePk } from '../../lib/pk';
+import { adminCorrections, adminTraiter, refreshCorrections, type CorrectionAdmin } from '../../lib/corrections';
 import { Modal } from '../Sheets';
 
 const errText = (e: unknown) =>
@@ -142,6 +143,59 @@ function AdminPanel({ eq }: { eq: Equipe }) {
             </span>
           </li>
         ))}
+      </ul>
+    </>
+  );
+}
+
+/* ---------- Administrateur : corrections de PK ---------- */
+
+function AdminCorrections({ eq, onFocusAt }: { eq: Equipe; onFocusAt: (at: LonLat) => void }) {
+  const code = eq.session!.code;
+  const [list, setList] = useState<CorrectionAdmin[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => adminCorrections(code).then(setList).catch((e) => setErr(errText(e))), [code]);
+  useEffect(() => void load(), [load]);
+  const act = async (c: CorrectionAdmin, statut: CorrectionAdmin['statut'], etendue: CorrectionAdmin['etendue']) => {
+    setErr(null);
+    try {
+      await adminTraiter(code, c.id, statut, etendue);
+      await load();
+      await refreshCorrections(true);
+    } catch (e) {
+      setErr(errText(e));
+    }
+  };
+  const label = { proposee: 'À valider', validee: 'Validée', refusee: 'Refusée' } as const;
+  return (
+    <>
+      <p className="muted small">
+        Bornes relevées sur le terrain. « Portion » : la correction s’efface sur 1,5 km de chaque côté (ou jusqu’à la
+        correction voisine). « Toute la ligne » : même écart jusqu’au bout de la ligne, à réserver aux lignes dont tous les
+        PK sont décalés.
+      </p>
+      {err && <p className="error">{err}</p>}
+      <ul className="items">
+        {(list ?? []).map((c) => {
+          const ecart = Math.round((c.pk_vrai - c.pk_app) * 1000);
+          return (
+            <li key={c.id} className={`corr ${c.statut}`}>
+              <div className="item-main">
+                <b>L{fmtLine(c.ligne)} · borne PK {fmtPk(c.pk_vrai)}</b>
+                <small>Appli : PK {fmtPk(c.pk_app)} · écart {ecart > 0 ? '+' : ''}{ecart} m{c.precision_m ? ` · GPS ± ${Math.round(c.precision_m)} m` : ''}</small>
+                <small>{c.auteur_nom || 'Anonyme'} · {fmtDateHeure(c.cree_le)}{c.commentaire ? ` · ${c.commentaire}` : ''}</small>
+                <small><b>{label[c.statut]}</b>{c.statut === 'validee' ? ` (${c.etendue === 'ligne' ? 'toute la ligne' : 'portion'})` : ''}{c.traite_par ? ` par ${c.traite_par}` : ''}</small>
+              </div>
+              <div className="btn-row">
+                <button className="btn btn-small" onClick={() => onFocusAt([c.lon, c.lat])}>Voir</button>
+                {c.statut !== 'validee' && <button className="btn btn-small primary" onClick={() => void act(c, 'validee', 'portion')}>Valider (portion)</button>}
+                {c.statut !== 'validee' && <button className="btn btn-small" onClick={() => void act(c, 'validee', 'ligne')}>Valider (toute la ligne)</button>}
+                {c.statut !== 'refusee' && <button className="btn btn-small btn-ghost" onClick={() => void act(c, 'refusee', c.etendue)}>{c.statut === 'validee' ? 'Retirer' : 'Refuser'}</button>}
+              </div>
+            </li>
+          );
+        })}
+        {list && !list.length && <p className="muted">Aucune correction proposée pour l’instant.</p>}
       </ul>
     </>
   );
@@ -575,6 +629,7 @@ type ChefTab = 'chantier' | 'chantiers' | 'agents';
 
 export function EspaceSheet(p: {
   eq: Equipe;
+  onFocusAt: (at: LonLat) => void;
   currentLine: { code: string; pk: number } | null;
   onOpenItem: (id: string, at: LonLat | null) => void;
   onShowChantier: () => void;
@@ -586,6 +641,7 @@ export function EspaceSheet(p: {
   const { eq } = p;
   const s = eq.session;
   const [chefTab, setChefTab] = useState<ChefTab>(s?.chantierId ? 'chantier' : 'chantiers');
+  const [adminTab, setAdminTab] = useState<'chefs' | 'corrections'>('chefs');
 
   if (!s) {
     return (
@@ -612,7 +668,15 @@ export function EspaceSheet(p: {
         }}>Se déconnecter</button>
       </div>
 
-      {role === 'admin' && <AdminPanel eq={eq} />}
+      {role === 'admin' && (
+        <>
+          <div className="chips seg tabs">
+            <button className={`chip ${adminTab === 'chefs' ? 'on' : ''}`} onClick={() => setAdminTab('chefs')}>Chefs</button>
+            <button className={`chip ${adminTab === 'corrections' ? 'on' : ''}`} onClick={() => setAdminTab('corrections')}>Corrections PK</button>
+          </div>
+          {adminTab === 'chefs' ? <AdminPanel eq={eq} /> : <AdminCorrections eq={eq} onFocusAt={p.onFocusAt} />}
+        </>
+      )}
 
       {role === 'agent' && (
         <>

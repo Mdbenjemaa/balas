@@ -23,6 +23,9 @@ Projet Supabase `repere-rail`, région Paris (eu-west-3).
 - Photos : bucket `photos` privé (JPEG, 6 Mo maximum). La fonction `photos` vérifie le code et
   l'accès au chantier, et ne signe que les chemins de ce chantier.
 
+- Corrections de PK (`corrections_pk`) : n'importe qui peut proposer (200 propositions par heure au plus),
+  seul l'administrateur valide ; seules les corrections validées sont lues par toutes les applis.
+
 ## Tester
 
 `python3 test_api.py <code administrateur>` : scénario administrateur, chef, agents, et tous les

@@ -12,6 +12,7 @@ Usage : python3 -I build_sncf.py <dossier raw/sncf> <dossier build>
 """
 import json
 import math
+import os
 import re
 import sys
 from bisect import bisect_left
@@ -231,6 +232,50 @@ def pk_at(chain, sign, a):
     return p0 + (p1 - p0) * (a - a0) / (a1 - a0) if a1 > a0 else p0
 
 
+# ---------- 3 bis. Bornes kilométriques relevées dans OpenStreetMap ----------
+# Facultatif (3e argument : osm.json produit par extract_osm.py). Une borne devient un repère si elle est
+# à moins de 25 m d'un tronçon couvrant son PK et si elle s'écarte de moins de 300 m du PK estimé avec les
+# seuls repères SNCF (au-delà : autre système de PK sur le terrain, ou borne mal placée dans OSM).
+# RR_CONTROLE=1 : une borne sur cinq est mise de côté pour mesurer le gain (sinon toutes servent).
+osm_controle = []
+if len(sys.argv) > 3 and Path(sys.argv[3]).exists():
+    from shapely.strtree import STRtree
+    tr_list = list(troncons.values())
+    tree = STRtree([t['geom'] for t in tr_list])
+    base = {id(t): build_chain(t) for t in tr_list}
+    kept = rejected = 0
+    for m in json.load(open(sys.argv[3]))['milestones']:
+        try:
+            pos = float(str(m['pos']).replace(',', '.').split(';')[0])
+        except ValueError:
+            continue
+        p = Point(to_l93(*m['xy']))
+        best = None
+        for i in tree.query(p.buffer(25)):
+            t = tr_list[i]
+            lo, hi = sorted((t['pkd'], t['pkf']))
+            if not (lo - 0.3 <= pos <= hi + 0.3):
+                continue
+            d = t['geom'].distance(p)
+            if d <= 25 and (best is None or d < best[0]):
+                best = (d, t)
+        if not best:
+            continue
+        t = best[1]
+        a = t['geom'].project(p)
+        chain, sign = base[id(t)]
+        est = pk_at(chain, sign, a)
+        if abs(est - pos) > 0.3:
+            rejected += 1
+            continue
+        if os.environ.get('RR_CONTROLE') and m['id'] % 5 == 0:
+            osm_controle.append((t, a, pos, est))
+            continue
+        t['anchors'].append((a, pos, 'borne'))
+        anchor_count['borne'] += 1
+        kept += 1
+    print(f'bornes OSM : {kept} repères ajoutés, {len(osm_controle)} mises de côté pour le contrôle, {rejected} écartées (> 300 m)')
+
 # Validation : on masque chaque repère intérieur et on recalcule son PK.
 errors_full, errors_naive = [], []
 for t in troncons.values():
@@ -285,6 +330,18 @@ for t in troncons.values():
         'name': names.get(t['code']), 'anchors': len(chain) - 2, 'verts': verts,
     })
 json.dump(lines_out, open(OUT / 'lines.json', 'w'))
+
+if osm_controle:
+    before = [abs(est - pos) * 1000 for _, _, pos, est in osm_controle]
+    after = [abs(pk_at(t['chain'], t['sign'], a) - pos) * 1000 for t, a, pos, _ in osm_controle]
+    report['controle_bornes_osm'] = {
+        'bornes': len(after),
+        'avant_mediane_m': round(pct(before, 0.5), 1), 'avant_p90_m': round(pct(before, 0.9), 1),
+        'apres_mediane_m': round(pct(after, 0.5), 1), 'apres_p90_m': round(pct(after, 0.9), 1),
+        'apres_p95_m': round(pct(after, 0.95), 1),
+    }
+    print('contrôle sur bornes OSM non utilisées', report['controle_bornes_osm'])
+    json.dump(report['controle_bornes_osm'], open(OUT / 'controle_osm.json', 'w'))
 
 # Bornes PK calculées tous les 100 m (les km entiers sont signalés).
 pk_marks = []

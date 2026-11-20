@@ -35,10 +35,11 @@ describe('position d’un PK', () => {
     expect(pos.length).toBe(1);
     expect(distance(pos[0].lonlat, [pn[4], pn[5]])).toBeLessThan(30);
   });
-  it('place les gares de la ligne 830 000 à leur PK', () => {
+  it('place les PN de la ligne 830 000 à leur PK', () => {
+    // Les gares ne servent pas de référence : leur point est le bâtiment, souvent à 50-150 m de leur PK.
     const doc = line('830000');
-    const gares = doc.points.filter((p) => p[1] === 'gare').slice(0, 40);
-    const ecarts = gares.map((g) => Math.min(...positionsAtPk(doc, g[0]).map((x) => distance(x.lonlat, [g[4], g[5]]))));
+    const pns = doc.points.filter((p) => p[1] === 'pn');
+    const ecarts = pns.map((g) => Math.min(...positionsAtPk(doc, g[0]).map((x) => distance(x.lonlat, [g[4], g[5]]))));
     ecarts.sort((a, b) => a - b);
     expect(ecarts[Math.floor(ecarts.length / 2)]).toBeLessThan(15);
   });

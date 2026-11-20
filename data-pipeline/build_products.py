@@ -369,7 +369,9 @@ manifest = {
     'cellsPerDegree': CELL,
     'cells': sorted(cell_sizes),
     'lines': line_index,
-    'quality': {'pk_recalage': meta['report'], 'controle_bornes_osm': milestone_check, 'reperes': meta['anchors']},
+    # Contrôle sur des bornes OSM mises de côté (run.sh : passage RR_CONTROLE), sinon comparaison simple.
+    'quality': {'pk_recalage': meta['report'], 'reperes': meta['anchors'],
+                'controle_bornes_osm': json.load(open(BUILD / 'controle_osm.json')) if (BUILD / 'controle_osm.json').exists() else milestone_check},
     'sources': [
         {'name': 'SNCF Réseau – lignes, voies, gares, PN, ouvrages, quais, vitesses, électrification, cantonnement, KVB, écartement',
          'license': 'Licence ouverte SNCF / ODbL', 'url': 'https://ressources.data.sncf.com/'},
