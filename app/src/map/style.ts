@@ -145,7 +145,7 @@ export function railLayers(basemap: Basemap, filters: Filters): LayerSpecificati
 }
 
 export const INTERACTIVE_LAYERS = [
-  'u-target', 'u-acces',
+  'u-sig', 'u-rep', 'u-zone', 'u-target', 'u-acces',
   'r-gares', 'r-pn', 'r-sst', 'r-ouvrages', 'r-bornes', 'r-pk-km', 'r-pk-hm',
   'r-sig-carre', 'r-sig-avert', 'r-sig-vitesse', 'r-sig-elec', 'r-sig-autre',
   'r-quais', 'r-voies', 'r-tunnels', 'r-lignes', 'r-lignes-autres',
@@ -156,11 +156,54 @@ export interface Overlays {
   me: FeatureCollection | null;
   target: FeatureCollection | null;
   acces: FeatureCollection | null;
+  team: FeatureCollection | null;
 }
 
 function overlayLayers(filters: Filters, photo: boolean): LayerSpecification[] {
   const halo = photo ? '#000000' : '#ffffff';
+  const team = filters.equipe ? 'visible' : 'none';
   return [
+    {
+      id: 'u-zone', type: 'line', source: 'team', filter: ['==', ['get', 'k'], 'zone'],
+      layout: { visibility: team, 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'col'], 'line-opacity': 0.55, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 6, 15, 14] },
+    },
+    {
+      id: 'u-zone-label', type: 'symbol', source: 'team', filter: ['==', ['get', 'k'], 'zone'], minzoom: 11,
+      layout: { visibility: team, 'symbol-placement': 'line', 'text-field': ['get', 'n'], 'text-font': BOLD, 'text-size': 12, 'symbol-spacing': 300 },
+      paint: { 'text-color': ['get', 'col'], 'text-halo-color': halo, 'text-halo-width': 2 },
+    },
+    {
+      id: 'u-rep', type: 'circle', source: 'team', filter: ['in', ['get', 'k'], ['literal', ['point', 'panneau']]],
+      layout: { visibility: team },
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 15, 9],
+        'circle-color': ['get', 'col'],
+        'circle-opacity': ['case', ['==', ['get', 'ret'], 1], 0.5, 1],
+        'circle-stroke-color': ['case', ['==', ['get', 'k'], 'panneau'], '#111827', '#ffffff'],
+        'circle-stroke-width': ['case', ['==', ['get', 'pend'], 1], 3.5, 2],
+      },
+    },
+    {
+      id: 'u-rep-label', type: 'symbol', source: 'team', filter: ['in', ['get', 'k'], ['literal', ['point', 'panneau']]], minzoom: 12,
+      layout: { visibility: team, 'text-field': ['get', 'n'], 'text-font': BOLD, 'text-size': 12, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-optional': true },
+      paint: { 'text-color': ['get', 'col'], 'text-halo-color': halo, 'text-halo-width': 1.8 },
+    },
+    {
+      id: 'u-sig', type: 'circle', source: 'team', filter: ['==', ['get', 'k'], 'sig'],
+      layout: { visibility: team },
+      paint: {
+        'circle-radius': ['case', ['==', ['get', 'urg'], 1], 11, 9],
+        'circle-color': ['get', 'col'],
+        'circle-stroke-color': ['case', ['==', ['get', 'pend'], 1], '#facc15', '#ffffff'],
+        'circle-stroke-width': 2.5,
+      },
+    },
+    {
+      id: 'u-sig-label', type: 'symbol', source: 'team', filter: ['==', ['get', 'k'], 'sig'],
+      layout: { visibility: team, 'text-field': '!', 'text-font': BOLD, 'text-size': 14, 'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': '#ffffff' },
+    },
     {
       id: 'u-acces', type: 'circle', source: 'acces', layout: { visibility: filters.acces ? 'visible' : 'none' },
       paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 15, 8], 'circle-color': '#047857', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
@@ -198,6 +241,7 @@ export async function buildStyle(basemap: Basemap, filters: Filters, o: Overlays
     me: { type: 'geojson', data: o.me ?? emptyFC() },
     target: { type: 'geojson', data: o.target ?? emptyFC() },
     acces: { type: 'geojson', data: o.acces ?? emptyFC() },
+    team: { type: 'geojson', data: o.team ?? emptyFC() },
   };
   let baseLayers: LayerSpecification[] = [{ id: 'fond', type: 'background', paint: { 'background-color': basemap === 'photo' ? '#1f2937' : '#eef0ec' } }];
   let sprite: StyleSpecification['sprite'];

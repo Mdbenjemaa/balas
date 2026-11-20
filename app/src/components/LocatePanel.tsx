@@ -42,6 +42,9 @@ interface Props {
   onChoose: (code: string) => void;
   onGoPk: (code: string, text: string) => void;
   acces: AccesSet[];
+  /** Présents quand on fait partie d'un chantier. */
+  onSignal?: () => void;
+  onRepere?: () => void;
   onFocus: (at: [number, number]) => void;
   onStopAcquire: () => void;
   onClose: () => void;
@@ -216,6 +219,12 @@ export function LocatePanel(p: Props) {
 
       <div className="sheet-body">
         {chosen && <PkForm onGo={(text) => p.onGoPk(chosen.code, text)} />}
+        {p.onSignal && (
+          <div className="btn-row team-actions">
+            <button className="btn btn-small btn-signal" onClick={p.onSignal}>⚠ Signaler ici</button>
+            <button className="btn btn-small" onClick={p.onRepere}>Poser un repère ici</button>
+          </div>
+        )}
         <div className="field-label">Ma distance aux voies</div>
         <div className="chips">
           {DISTANCES.map((d) => (

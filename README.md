@@ -19,6 +19,7 @@ vitesse…). Elle marche sur iPhone et Android, **même sans réseau** une fois 
 | Caractéristiques au PK | Statut, vitesse nominale, électrification, cantonnement, KVB, écartement |
 | Aller au PK | Depuis ma position (« Aller au PK » sous le PK affiché) ou par la recherche (« 830000 45+200 ») : le PK sur la carte, la distance le long de la ligne et le sens, ce qu'il y a autour, et un itinéraire en voiture (Plans, Google Maps, Waze) |
 | Mes accès | Import d'une carte d'accès exportée de Google My Maps (KML ou KMZ) ou en GeoJSON. Chaque accès reçoit sa ligne et son PK, apparaît sur la carte et dans les listes, et peut servir de destination. Les accès restent dans le téléphone : ils ne sont ni envoyés ni publiés |
+| Espace chantier (comptes) | Bouton « Chantier » : connexion par code personnel. L'administrateur crée les chefs ; le chef crée ses chantiers et ses agents (un code chacun), les affecte, prépare la carte (zone entre deux PK, points, accès, panneaux, import KML) et a le tableau de bord (signalements avec photos, rapports de fin de poste signés en PDF, export Excel). L'agent voit son chantier et signale des anomalies, même sans réseau. Sur ordinateur, la carte et le panneau sont côte à côte |
 | Suivre en marchant | Met à jour le PK en continu (écran allumé) |
 | Me placer ici | Appui long sur la carte : repérage sans GPS (préparer une intervention, GPS mauvais) |
 | Carte et filtres | PK tous les 100 m, bornes OSM, gares, quais, voies et numéros, PN, tunnels, ponts, sous-stations, carrés et sémaphores, avertissements, TIV et pancartes Z/R, signaux électriques, vitesses et électrification en couleurs ; fond plan ou photo aérienne IGN |
@@ -81,6 +82,12 @@ Code : React 19, TypeScript, Vite, MapLibre GL 6, PMTiles, vite-plugin-pwa.
 | `app/src/lib/data.ts` | Chargement des données, cache hors-ligne, tuiles depuis le cache |
 | `app/src/map/style.ts` | Style de la carte et des couches |
 | `app/public/data/` | Données générées : `rail.pmtiles` (carte), `cells/` (géométrie avec PK, par case de 0,25°), `lines/` (fiche de chaque ligne) |
+
+## Chantier partagé (serveur)
+
+Les données d'équipe sont sur un projet Supabase hébergé à Paris : voir `supabase/README.md`
+(tables, fonctions, règles de sécurité, fonction des photos). Seules les positions des signalements
+et des repères sont enregistrées, jamais la position des agents en continu.
 
 ## Mettre à jour les données
 

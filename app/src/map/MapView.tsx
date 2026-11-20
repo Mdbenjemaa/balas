@@ -40,23 +40,25 @@ interface Props {
   me: FeatureCollection | null;
   target: FeatureCollection | null;
   acces: FeatureCollection | null;
+  team: FeatureCollection | null;
   focus: FocusRequest | null;
   onFeature: (f: MapGeoJSONFeature, at: LonLat) => void;
   onLongPress: (at: LonLat) => void;
   onMapTap: () => void;
 }
 
-export function MapView({ basemap, filters, me, target, acces, focus, onFeature, onLongPress, onMapTap }: Props) {
+export function MapView({ basemap, filters, me, target, acces, team, focus, onFeature, onLongPress, onMapTap }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const latest = useRef({ filters, me, target, acces, onFeature, onLongPress, onMapTap });
-  latest.current = { filters, me, target, acces, onFeature, onLongPress, onMapTap };
-  const overlays = (): Overlays => ({ me: latest.current.me, target: latest.current.target, acces: latest.current.acces });
+  const latest = useRef({ filters, me, target, acces, team, onFeature, onLongPress, onMapTap });
+  latest.current = { filters, me, target, acces, team, onFeature, onLongPress, onMapTap };
+  const overlays = (): Overlays => ({ me: latest.current.me, target: latest.current.target, acces: latest.current.acces, team: latest.current.team });
   const syncOverlays = (m: MapLibreMap) => {
     const o = overlays();
     setSource(m, 'me', o.me);
     setSource(m, 'target', o.target);
     setSource(m, 'acces', o.acces);
+    setSource(m, 'team', o.team);
   };
 
   // Création de la carte.
@@ -161,6 +163,7 @@ export function MapView({ basemap, filters, me, target, acces, focus, onFeature,
   useEffect(() => setSource(map.current, 'me', me), [me]);
   useEffect(() => setSource(map.current, 'target', target), [target]);
   useEffect(() => setSource(map.current, 'acces', acces), [acces]);
+  useEffect(() => setSource(map.current, 'team', team), [team]);
 
   // Recentrage demandé.
   useEffect(() => {

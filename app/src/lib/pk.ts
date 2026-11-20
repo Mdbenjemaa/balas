@@ -117,3 +117,36 @@ export function navLinks(at: LonLat): { label: string; href: string }[] {
     { label: 'Waze', href: `https://waze.com/ul?ll=${lat},${lon}&navigate=yes` },
   ];
 }
+
+/** Tracé de la ligne entre deux PK (un morceau par tronçon concerné), pour dessiner une zone. */
+export function lineBetween(doc: LineDoc, pkA: number, pkB: number): [number, number][][] {
+  const lo = Math.min(pkA, pkB);
+  const hi = Math.max(pkA, pkB);
+  const parts: [number, number][][] = [];
+  for (const t of doc.troncons) {
+    if (!t.g) continue;
+    const v = decodeGeom(t.g);
+    let cur: [number, number][] = [];
+    const at = (a: Vertex, b: Vertex, pk: number): [number, number] => {
+      const f = b[2] === a[2] ? 0 : (pk - a[2]) / (b[2] - a[2]);
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+    };
+    for (let i = 0; i + 1 < v.length; i++) {
+      const a = v[i];
+      const b = v[i + 1];
+      const sLo = Math.min(a[2], b[2]);
+      const sHi = Math.max(a[2], b[2]);
+      if (sHi < lo || sLo > hi) {
+        if (cur.length > 1) parts.push(cur);
+        cur = [];
+        continue;
+      }
+      const start = a[2] >= lo && a[2] <= hi ? ([a[0], a[1]] as [number, number]) : at(a, b, a[2] < lo ? lo : hi);
+      const end = b[2] >= lo && b[2] <= hi ? ([b[0], b[1]] as [number, number]) : at(a, b, b[2] < lo ? lo : hi);
+      if (!cur.length) cur.push(start);
+      cur.push(end);
+    }
+    if (cur.length > 1) parts.push(cur);
+  }
+  return parts;
+}

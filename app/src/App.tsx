@@ -15,9 +15,19 @@ import { cellsAround, matchInCells, pickLine, searchRadius } from './lib/locate'
 import { loadPref, meFeatures, savePref } from './lib/me';
 import { MapView, railSource, type FocusRequest } from './map/MapView';
 import { PREVIEW } from './lib/env';
+import { EspaceSheet } from './components/equipe/EspaceSheet';
+import { RepereForm, SignalForm } from './components/equipe/Forms';
+import { RapportForm } from './components/equipe/RapportForm';
+import { TeamCard } from './components/equipe/TeamCard';
+import type { RapportResume } from './lib/equipe/api';
+import { teamFeatures } from './lib/equipe/features';
+import { positionFrom } from './lib/equipe/position';
+import type { NewItem } from './lib/equipe/store';
+import { useEquipe } from './lib/equipe/useEquipe';
 import type { Basemap } from './map/style';
 
-type Panel = 'none' | 'filters' | 'offline' | 'info';
+type Panel = 'none' | 'filters' | 'offline' | 'info' | 'chantier' | 'signal' | 'repere' | 'rapport';
+const TEAM_LAYERS = new Set(['u-sig', 'u-rep', 'u-zone']);
 
 export default function App() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -40,6 +50,18 @@ export default function App() {
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eq = useEquipe();
+  const [teamFC, setTeamFC] = useState<FeatureCollection | null>(null);
+  const [teamPick, setTeamPick] = useState<string | null>(null);
+  const [rapport, setRapport] = useState<RapportResume | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void teamFeatures(eq.view).then((fc) => !cancelled && setTeamFC(fc));
+    return () => {
+      cancelled = true;
+    };
+  }, [eq.view]);
   const acquisition = useRef<Acquisition | null>(null);
   const stopFollow = useRef<(() => void) | null>(null);
   const busy = useRef(false);
@@ -173,6 +195,67 @@ export default function App() {
     }
   };
 
+  /** Envoi d'un signalement ou d'un repère créé sur ce téléphone. */
+  const submitTeam = (item: NewItem) => {
+    void eq.envoyer(item);
+    setPanel('none');
+    showToast(navigator.onLine ? 'Enregistré, envoi en cours…' : 'Enregistré sur le téléphone : envoi au retour du réseau.');
+  };
+
+  /** Sur ordinateur, le panneau du chantier reste ouvert à côté de la carte. */
+  const wide = () => window.matchMedia('(min-width: 900px)').matches;
+
+  /** Ouvre la fiche d'un signalement ou d'un repère et centre la carte dessus. */
+  const openTeamItem = async (id: string, at: LonLat | null) => {
+    if (!wide()) setPanel('none');
+    setPicked(null);
+    setTeamPick(id);
+    if (at) return focusOn(at, 16);
+    const r = eq.view.reperes.find((x) => x.id === id);
+    if (r?.ligne && r.pk !== null) {
+      try {
+        const doc = await loadLine(r.ligne);
+        const mid = positionsAtPk(doc, (r.pk + (r.pk_fin ?? r.pk)) / 2)[0];
+        if (mid) focusOn(mid.lonlat, 14);
+      } catch {
+        /* ligne indisponible */
+      }
+    }
+  };
+
+  const openSignal = () => {
+    setPicked(null);
+    if (!eq.session?.chantierId) return setPanel('chantier');
+    setPanel('signal');
+    if (loc.phase !== 'result') locate();
+  };
+
+  /** Centre la carte sur la zone du chantier (milieu entre ses PK de début et de fin). */
+  const showChantier = async (keepPanel = false) => {
+    const c = eq.etat?.chantier ?? eq.session?.chantiers.find((x) => x.id === eq.session?.chantierId);
+    if (!c?.ligne || c.pk_debut === null) return;
+    try {
+      const doc = await loadLine(c.ligne);
+      const mid = positionsAtPk(doc, (c.pk_debut + (c.pk_fin ?? c.pk_debut)) / 2)[0];
+      if (!mid) return showToast('PK du chantier introuvables sur la ligne.');
+      if (!keepPanel && !wide()) setPanel('none');
+      focusOn(mid.lonlat, Math.abs((c.pk_fin ?? c.pk_debut) - c.pk_debut) > 3 ? 12 : 14);
+    } catch {
+      showToast('Ligne indisponible pour le moment (pas de réseau ?).');
+    }
+  };
+  const inChantier = !!eq.session?.chantierId && eq.session.compte.role !== 'admin';
+
+  // Chantier ouvert (connexion, changement) : la carte se place sur sa zone si on ne s'est pas encore repéré.
+  const openedChantier = eq.session?.chantierId ?? null;
+  const locIdle = loc.phase === 'idle';
+  useEffect(() => {
+    if (openedChantier && locIdle) void showChantier(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openedChantier]);
+
+  const position = positionFrom(loc);
+
   const origin: Origin | null =
     loc.phase === 'result' && loc.chosen ? { code: loc.chosen.code, pk: loc.chosen.pk, lonlat: loc.fix.lonlat } : null;
 
@@ -228,8 +311,17 @@ export default function App() {
         me={me}
         target={targetFC}
         acces={accesFC}
+        team={teamFC}
         focus={focus}
-        onFeature={(f, at) => setPicked({ f, at })}
+        onFeature={(f, at) => {
+          if (TEAM_LAYERS.has(f.layer.id) && f.properties?.id) {
+            setPicked(null);
+            setTeamPick(String(f.properties.id));
+          } else {
+            setTeamPick(null);
+            setPicked({ f, at });
+          }
+        }}
         onLongPress={(at) => placeHere(at)}
         onMapTap={() => setPicked(null)}
       />
@@ -246,6 +338,14 @@ export default function App() {
             <path d="M12 3v11m0 0 4.5-4.5M12 14 7.5 9.5M4 17v3h16v-3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
           </svg>
         </button>}
+        {!PREVIEW && (
+          <button className={`icon-btn raised team-btn ${eq.session ? 'on' : ''}`} onClick={() => setPanel('chantier')} aria-label="Espace chantier">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 0a3 3 0 1 0 0-6M2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1m1-7a5 5 0 0 1 5 5v2" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+            </svg>
+            {eq.pending.length > 0 && <span className="badge-count">{eq.pending.length}</span>}
+          </button>
+        )}
         <button className="icon-btn raised" onClick={() => setPanel('info')} aria-label="À propos et sources">
           <b>i</b>
         </button>
@@ -265,10 +365,17 @@ export default function App() {
             {following ? '● Suivi actif' : 'Suivre en marchant'}
           </button>
         )}
+        {inChantier && (
+          <button className="fab fab-signal" onClick={openSignal}>
+            ⚠ Signaler
+          </button>
+        )}
         <button className="fab" onClick={locate} disabled={loc.phase === 'acquiring'}>
           {loc.phase === 'acquiring' ? 'GPS…' : 'Me repérer'}
         </button>
       </div>
+
+      {teamPick && <TeamCard eq={eq} id={teamPick} onClose={() => setTeamPick(null)} />}
 
       {picked && loc.phase !== 'acquiring' && (
         <FeatureCard feature={picked.f} at={picked.at} manifest={manifest} onPlaceHere={placeHere} onClose={() => setPicked(null)} />
@@ -302,6 +409,8 @@ export default function App() {
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}
         onGoPk={(code, text) => void goToPk(code, text)}
         acces={acces}
+        onSignal={inChantier ? openSignal : undefined}
+        onRepere={eq.etat?.gere ? () => setPanel('repere') : undefined}
         onFocus={(at) => focusOn(at, 17)}
         onStopAcquire={() => acquisition.current?.cancel()}
         onClose={closeLocate}
@@ -333,6 +442,35 @@ export default function App() {
         />
       )}
       {panel === 'info' && <InfoSheet manifest={manifest} onClose={() => setPanel('none')} />}
+      {panel === 'chantier' && (
+        <EspaceSheet
+          eq={eq}
+          currentLine={loc.phase === 'result' && loc.chosen ? { code: loc.chosen.code, pk: loc.chosen.pk } : null}
+          onOpenItem={(id, at) => void openTeamItem(id, at)}
+          onShowChantier={() => void showChantier()}
+          onNewSignal={openSignal}
+          onNewRepere={() => setPanel('repere')}
+          onRapport={(r) => {
+            setRapport(r);
+            setPanel('rapport');
+          }}
+          onClose={() => setPanel('none')}
+        />
+      )}
+      {panel === 'signal' && (
+        <SignalForm pos={position} locating={loc.phase === 'acquiring'} onLocate={locate} onSubmit={submitTeam} onClose={() => setPanel('none')} />
+      )}
+      {panel === 'repere' && (
+        <RepereForm
+          pos={position}
+          locating={loc.phase === 'acquiring'}
+          defaultLine={eq.etat?.chantier.ligne ?? null}
+          onLocate={locate}
+          onSubmit={submitTeam}
+          onClose={() => setPanel('none')}
+        />
+      )}
+      {panel === 'rapport' && eq.etat && <RapportForm eq={eq} existing={rapport} onClose={() => setPanel('chantier')} />}
       {!ack && (
         <Disclaimer
           onAccept={() => {

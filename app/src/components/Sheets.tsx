@@ -20,9 +20,9 @@ import type { LonLat } from '../lib/geo';
 import { FILTERS, type FilterKey, type Filters } from '../lib/layers';
 import type { Basemap } from '../map/style';
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children, side }: { title: string; onClose: () => void; children: React.ReactNode; side?: boolean }) {
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className={`modal-back ${side ? 'side' : ''}`} onClick={onClose}>
       <div className="modal" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>{title}</h2>
@@ -490,7 +490,7 @@ export function Search(p: {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => setOpen(true)}
-        placeholder="Gare, ligne, ou ligne + PK"
+        placeholder="Gare, ligne, PK…"
         aria-label="Rechercher une gare ou une ligne"
         enterKeyHint="search"
       />
