@@ -74,29 +74,53 @@ function ItemRow({ it, onFocus }: { it: AroundItem; onFocus: (at: [number, numbe
   );
 }
 
-/** Saisie « Aller au PK » sur la ligne où l'on se trouve. */
+/**
+ * Saisie « Aller au PK » : une case pour les kilomètres, une pour les mètres, comme sur une borne
+ * (le clavier chiffres de l'iPhone n'a pas de « + »). « 45,2 » dans la première case marche aussi.
+ */
 function PkForm({ onGo }: { onGo: (text: string) => void }) {
-  const [text, setText] = useState('');
+  const [km, setKm] = useState('');
+  const [m, setM] = useState('');
+  const kmClean = km.trim();
+  const decimal = /[.,]/.test(kmClean);
+  const submit = () => {
+    if (!kmClean) return;
+    onGo(!decimal && m.trim() ? `${kmClean}+${m.trim().padStart(3, '0')}` : kmClean);
+    (document.activeElement as HTMLElement | null)?.blur();
+  };
   return (
     <form
       className="pk-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (text.trim()) onGo(text);
-        (document.activeElement as HTMLElement | null)?.blur();
+        submit();
       }}
     >
       <label htmlFor="go-pk">Aller au PK</label>
       <input
         id="go-pk"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
+        className="pk-km"
+        value={km}
+        onChange={(e) => setKm(e.target.value.replace(/[^\d.,-]/g, ''))}
         inputMode="decimal"
-        placeholder="ex. 45,2 ou 45+200"
-        enterKeyHint="go"
+        placeholder="45"
+        aria-label="Kilomètres"
         autoComplete="off"
       />
-      <button className="btn btn-small" type="submit" disabled={!text.trim()}>
+      <span className="pk-plus" aria-hidden="true">
+        +
+      </span>
+      <input
+        className="pk-m"
+        value={m}
+        onChange={(e) => setM(e.target.value.replace(/\D/g, '').slice(0, 3))}
+        inputMode="numeric"
+        placeholder="200"
+        aria-label="Mètres"
+        autoComplete="off"
+        disabled={decimal}
+      />
+      <button className="btn btn-small" type="submit" disabled={!kmClean}>
         Go
       </button>
     </form>

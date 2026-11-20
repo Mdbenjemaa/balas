@@ -143,3 +143,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .set-name { flex: 1; text-align: left; border: 0; background: none; padding: 0; display: flex; flex-direction: column; }
 .set-name small { color: var(--muted); }
 .btn-ghost { background: none; color: var(--danger); }
+.pk-form { gap: 6px; }
+.pk-form .pk-km { flex: 1.1; text-align: right; }
+.pk-form .pk-m { flex: 1; max-width: 76px; }
+.pk-form .pk-m:disabled { opacity: 0.4; }
+.pk-plus { font-size: 20px; font-weight: 800; color: #5b21b6; }
+.pk-form label { font-size: 13px; line-height: 1.1; white-space: normal; max-width: 52px; }
