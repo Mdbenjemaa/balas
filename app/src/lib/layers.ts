@@ -1,5 +1,6 @@
 /** Filtres de la carte, avec les types d'éléments de la liste « autour de moi » qu'ils commandent. */
 export type FilterKey =
+  | 'acces'
   | 'pk'
   | 'bornes'
   | 'gares'
@@ -21,7 +22,7 @@ export interface FilterDef {
   key: FilterKey;
   label: string;
   hint?: string;
-  group: 'Repères' | 'Infrastructure' | 'Signalisation (OpenStreetMap)' | 'Caractéristiques de ligne';
+  group: 'Mes données' | 'Repères' | 'Infrastructure' | 'Signalisation (OpenStreetMap)' | 'Caractéristiques de ligne';
   on: boolean;
   /** Couches de la carte concernées. */
   layers: string[];
@@ -30,6 +31,7 @@ export interface FilterDef {
 }
 
 export const FILTERS: FilterDef[] = [
+  { key: 'acces', label: 'Mes accès (importés)', hint: 'Carte d’accès importée sur ce téléphone', group: 'Mes données', on: true, layers: ['u-acces', 'u-acces-label'], kinds: ['acces'] },
   { key: 'pk', label: 'PK calculés', hint: 'Tous les 100 m, recalés sur les repères SNCF', group: 'Repères', on: true, layers: ['r-pk-km', 'r-pk-km-label', 'r-pk-hm', 'r-pk-hm-label'], kinds: [] },
   { key: 'bornes', label: 'Bornes kilométriques (OSM)', hint: 'Bornes réelles relevées par les contributeurs', group: 'Repères', on: false, layers: ['r-bornes', 'r-bornes-label'], kinds: [] },
   { key: 'gares', label: 'Gares', group: 'Infrastructure', on: true, layers: ['r-gares', 'r-gares-label'], kinds: ['gare'] },
@@ -60,6 +62,7 @@ export function kindVisible(filters: Filters, kind: string): boolean {
 
 /** Pastille de chaque type d'élément. */
 export const KIND_BADGE: Record<string, { text: string; color: string; name: string }> = {
+  acces: { text: 'Ac', color: '#047857', name: 'Accès (importé)' },
   gare: { text: 'G', color: '#1f2937', name: 'Gare' },
   quai: { text: 'Q', color: '#64748b', name: 'Quai' },
   pn: { text: 'PN', color: '#d97706', name: 'Passage à niveau' },

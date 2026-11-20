@@ -12,7 +12,10 @@ import {
   type Manifest,
   type OfflineState,
 } from '../lib/data';
-import { fmtLine } from '../lib/format';
+import type { AccesSet } from '../lib/acces';
+import { fmtLine, fmtPk } from '../lib/format';
+import { parsePkQuery } from '../lib/pk';
+import { NavLinks } from './TargetSheet';
 import type { LonLat } from '../lib/geo';
 import { FILTERS, type FilterKey, type Filters } from '../lib/layers';
 import type { Basemap } from '../map/style';
@@ -35,11 +38,76 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 /* ---------- Filtres et fond de carte ---------- */
 
+export interface ImportStatus {
+  busy: boolean;
+  text: string;
+  error?: boolean;
+}
+
+/** Import et liste des cartes d'accès enregistrées sur le téléphone. */
+function AccesManager(p: {
+  sets: AccesSet[];
+  status: ImportStatus | null;
+  onImport: (f: File) => void;
+  onDelete: (id: string) => void;
+  onShow: (set: AccesSet) => void;
+}) {
+  return (
+    <div className="acces-box">
+      <div className="field-label">Mes accès</div>
+      <p className="muted small">
+        Importe une carte d’accès (Google My Maps : menu ⋮ › « Télécharger KML » ou « Exporter au format KML/KMZ »).
+        Chaque accès reçoit sa ligne et son PK. La carte reste uniquement sur ce téléphone.
+      </p>
+      <label className={`btn file-btn ${p.status?.busy ? 'disabled' : ''}`}>
+        {p.status?.busy ? 'Import en cours…' : 'Importer un fichier KML ou KMZ'}
+        <input
+          type="file"
+          disabled={p.status?.busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) p.onImport(f);
+            e.target.value = '';
+          }}
+        />
+      </label>
+      {p.status && !p.status.busy && <p className={p.status.error ? 'error small' : 'ok small'}>{p.status.text}</p>}
+      {p.sets.length > 0 && (
+        <ul className="sets">
+          {p.sets.map((set) => (
+            <li key={set.id}>
+              <button className="set-name" onClick={() => p.onShow(set)}>
+                <b>{set.name}</b>
+                <small>
+                  {set.items.length} accès · {set.items.filter((a) => a.code).length} rattachés à une ligne
+                </small>
+              </button>
+              <button
+                className="btn btn-small btn-ghost"
+                onClick={() => {
+                  if (window.confirm(`Supprimer « ${set.name} » de ce téléphone ?`)) p.onDelete(set.id);
+                }}
+              >
+                Supprimer
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function FilterSheet(p: {
   filters: Filters;
   basemap: Basemap;
   onToggle: (k: FilterKey) => void;
   onBasemap: (b: Basemap) => void;
+  acces: AccesSet[];
+  importStatus: ImportStatus | null;
+  onImport: (f: File) => void;
+  onDeleteSet: (id: string) => void;
+  onShowSet: (set: AccesSet) => void;
   onClose: () => void;
 }) {
   const groups = [...new Set(FILTERS.map((f) => f.group))];
@@ -76,6 +144,9 @@ export function FilterSheet(p: {
       <p className="muted small">
         Les signaux viennent d’OpenStreetMap : couverture partielle selon les secteurs, et pas toujours à jour.
       </p>
+      {!PREVIEW && (
+        <AccesManager sets={p.acces} status={p.importStatus} onImport={p.onImport} onDelete={p.onDeleteSet} onShow={p.onShowSet} />
+      )}
     </Modal>
   );
 }
@@ -268,6 +339,7 @@ const LAYER_TITLE: Record<string, string> = {
   'r-sig-carre': 'Signal (OpenStreetMap)', 'r-sig-avert': 'Signal (OpenStreetMap)', 'r-sig-vitesse': 'Pancarte (OpenStreetMap)',
   'r-sig-elec': 'Signal électrique (OpenStreetMap)', 'r-sig-autre': 'Signal (OpenStreetMap)', 'r-quais': 'Quai',
   'r-voies': 'Voie', 'r-tunnels': 'Tunnel (OpenStreetMap)', 'r-lignes': 'Ligne', 'r-lignes-autres': 'Ligne',
+  'u-acces': 'Accès (importé)', 'u-target': 'Destination',
 };
 
 export function FeatureCard(p: {
@@ -340,7 +412,19 @@ export function FeatureCard(p: {
             <dd>{pr.k === 'V' ? 'Voyageurs' : 'Fret / service'}</dd>
           </>
         )}
+        {pr.set && (
+          <>
+            <dt>Carte</dt>
+            <dd>{pr.set}</dd>
+          </>
+        )}
       </dl>
+      {f.geometry.type === 'Point' && (
+        <>
+          <div className="field-label">Itinéraire en voiture</div>
+          <NavLinks at={point} />
+        </>
+      )}
       <button className="btn" onClick={() => p.onPlaceHere(point)}>
         Me placer ici
       </button>
@@ -358,7 +442,11 @@ const norm = (s: string) =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 
-export function Search(p: { manifest: Manifest | null; onGo: (at: LonLat, zoom: number) => void }) {
+export function Search(p: {
+  manifest: Manifest | null;
+  onGo: (at: LonLat, zoom: number) => void;
+  onPk: (code: string, pk: number) => void;
+}) {
   const [q, setQ] = useState('');
   const [gares, setGares] = useState<GareEntry[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -368,8 +456,16 @@ export function Search(p: { manifest: Manifest | null; onGo: (at: LonLat, zoom: 
   }, [open, gares]);
 
   const nq = norm(q);
-  const results: { label: string; sub: string; at: LonLat; zoom: number }[] = [];
-  if (nq.length >= 2) {
+  const results: { label: string; sub: string; at?: LonLat; zoom?: number; pk?: { code: string; pk: number } }[] = [];
+  const pkq = parsePkQuery(q);
+  if (pkq && p.manifest?.lines[pkq.code]) {
+    results.push({
+      label: `PK ${fmtPk(pkq.pk)} · ligne ${fmtLine(pkq.code)}`,
+      sub: p.manifest.lines[pkq.code].n ?? 'Aller à ce PK',
+      pk: pkq,
+    });
+  }
+  if (nq.length >= 2 && !pkq) {
     const digits = nq.replace(/\s/g, '');
     if (/^\d{3,6}$/.test(digits) && p.manifest) {
       for (const [code, info] of Object.entries(p.manifest.lines)) {
@@ -394,7 +490,7 @@ export function Search(p: { manifest: Manifest | null; onGo: (at: LonLat, zoom: 
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => setOpen(true)}
-        placeholder="Gare ou numéro de ligne"
+        placeholder="Gare, ligne, ou ligne + PK"
         aria-label="Rechercher une gare ou une ligne"
         enterKeyHint="search"
       />
@@ -404,7 +500,8 @@ export function Search(p: { manifest: Manifest | null; onGo: (at: LonLat, zoom: 
             <li key={i}>
               <button
                 onClick={() => {
-                  p.onGo(r.at, r.zoom);
+                  if (r.pk) p.onPk(r.pk.code, r.pk.pk);
+                  else if (r.at) p.onGo(r.at, r.zoom ?? 15);
                   setQ('');
                   setOpen(false);
                   (document.activeElement as HTMLElement | null)?.blur();

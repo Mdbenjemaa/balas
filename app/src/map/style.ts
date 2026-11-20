@@ -145,10 +145,42 @@ export function railLayers(basemap: Basemap, filters: Filters): LayerSpecificati
 }
 
 export const INTERACTIVE_LAYERS = [
+  'u-target', 'u-acces',
   'r-gares', 'r-pn', 'r-sst', 'r-ouvrages', 'r-bornes', 'r-pk-km', 'r-pk-hm',
   'r-sig-carre', 'r-sig-avert', 'r-sig-vitesse', 'r-sig-elec', 'r-sig-autre',
   'r-quais', 'r-voies', 'r-tunnels', 'r-lignes', 'r-lignes-autres',
 ];
+
+/** Points ajoutés par l'appli : accès importés, PK de destination. */
+export interface Overlays {
+  me: FeatureCollection | null;
+  target: FeatureCollection | null;
+  acces: FeatureCollection | null;
+}
+
+function overlayLayers(filters: Filters, photo: boolean): LayerSpecification[] {
+  const halo = photo ? '#000000' : '#ffffff';
+  return [
+    {
+      id: 'u-acces', type: 'circle', source: 'acces', layout: { visibility: filters.acces ? 'visible' : 'none' },
+      paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 15, 8], 'circle-color': '#047857', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
+    },
+    {
+      id: 'u-acces-label', type: 'symbol', source: 'acces', minzoom: 11,
+      layout: { visibility: filters.acces ? 'visible' : 'none', 'text-field': ['get', 'n'], 'text-font': BOLD, 'text-size': 12, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-optional': true },
+      paint: { 'text-color': photo ? '#bbf7d0' : '#065f46', 'text-halo-color': halo, 'text-halo-width': 1.6 },
+    },
+    {
+      id: 'u-target', type: 'circle', source: 'target',
+      paint: { 'circle-radius': 11, 'circle-color': '#7c3aed', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 },
+    },
+    {
+      id: 'u-target-label', type: 'symbol', source: 'target',
+      layout: { 'text-field': ['get', 'label'], 'text-font': BOLD, 'text-size': 14, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-allow-overlap': true },
+      paint: { 'text-color': '#5b21b6', 'text-halo-color': halo, 'text-halo-width': 2 },
+    },
+  ];
+}
 
 /** Couches de la position de l'utilisateur. */
 function meLayers(): LayerSpecification[] {
@@ -160,10 +192,12 @@ function meLayers(): LayerSpecification[] {
   ];
 }
 
-export async function buildStyle(basemap: Basemap, filters: Filters, me: FeatureCollection | null): Promise<StyleSpecification> {
+export async function buildStyle(basemap: Basemap, filters: Filters, o: Overlays): Promise<StyleSpecification> {
   const sources: Record<string, SourceSpecification> = {
     rail: { type: 'vector', url: `pmtiles://${PMTILES_URL}`, attribution: '© SNCF Réseau (open data) · © OpenStreetMap' },
-    me: { type: 'geojson', data: me ?? emptyFC() },
+    me: { type: 'geojson', data: o.me ?? emptyFC() },
+    target: { type: 'geojson', data: o.target ?? emptyFC() },
+    acces: { type: 'geojson', data: o.acces ?? emptyFC() },
   };
   let baseLayers: LayerSpecification[] = [{ id: 'fond', type: 'background', paint: { 'background-color': basemap === 'photo' ? '#1f2937' : '#eef0ec' } }];
   let sprite: StyleSpecification['sprite'];
@@ -187,7 +221,7 @@ export async function buildStyle(basemap: Basemap, filters: Filters, me: Feature
     glyphs: GLYPHS,
     ...(sprite ? { sprite } : {}),
     sources,
-    layers: [...baseLayers, ...railLayers(basemap, filters), ...meLayers()],
+    layers: [...baseLayers, ...railLayers(basemap, filters), ...overlayLayers(filters, basemap === 'photo'), ...meLayers()],
   };
 }
 

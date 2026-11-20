@@ -1,4 +1,6 @@
-import type { LineDoc, Manifest } from '../lib/data';
+import { useState } from 'react';
+import type { AccesSet } from '../lib/acces';
+import type { LineDoc, LinePoint, Manifest } from '../lib/data';
 import { fmtDist, fmtLine, fmtPk } from '../lib/format';
 import type { Fix } from '../lib/gps';
 import { kindVisible, KIND_BADGE, type Filters } from '../lib/layers';
@@ -38,6 +40,8 @@ interface Props {
   onToggleExpand: () => void;
   onDeclared: (d: number | null) => void;
   onChoose: (code: string) => void;
+  onGoPk: (code: string, text: string) => void;
+  acces: AccesSet[];
   onFocus: (at: [number, number]) => void;
   onStopAcquire: () => void;
   onClose: () => void;
@@ -67,6 +71,35 @@ function ItemRow({ it, onFocus }: { it: AroundItem; onFocus: (at: [number, numbe
         </span>
       </button>
     </li>
+  );
+}
+
+/** Saisie « Aller au PK » sur la ligne où l'on se trouve. */
+function PkForm({ onGo }: { onGo: (text: string) => void }) {
+  const [text, setText] = useState('');
+  return (
+    <form
+      className="pk-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (text.trim()) onGo(text);
+        (document.activeElement as HTMLElement | null)?.blur();
+      }}
+    >
+      <label htmlFor="go-pk">Aller au PK</label>
+      <input
+        id="go-pk"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        inputMode="decimal"
+        placeholder="ex. 45,2 ou 45+200"
+        enterKeyHint="go"
+        autoComplete="off"
+      />
+      <button className="btn btn-small" type="submit" disabled={!text.trim()}>
+        Go
+      </button>
+    </form>
   );
 }
 
@@ -109,7 +142,15 @@ export function LocatePanel(p: Props) {
   const { fix, match, chosen, doc, mode, radius } = state;
   const name = chosen ? (p.manifest?.lines[chosen.code]?.n ?? doc?.name) : null;
   const tracks = chosen ? match.tracks.filter((t) => t.code === chosen.code).slice(0, 3) : [];
-  const around = doc && chosen ? aroundPk(doc, chosen.pk, (k) => kindVisible(p.filters, k)) : null;
+  const accesHere: LinePoint[] = chosen
+    ? p.acces.flatMap((set) =>
+        set.items
+          .filter((a) => a.code === chosen.code && a.pk !== undefined)
+          .map((a): LinePoint => [a.pk!, 'acces', a.name, a.desc.split('\n')[0] ?? '', a.lonlat[0], a.lonlat[1]]),
+      )
+    : [];
+  const around =
+    doc && chosen ? aroundPk({ ...doc, points: doc.points.concat(accesHere) }, chosen.pk, (k) => kindVisible(p.filters, k)) : null;
   const vmax = doc && chosen ? sectionAt(doc, 'vmax', chosen.pk) : null;
   const elec = doc && chosen ? sectionAt(doc, 'elec', chosen.pk) : null;
   const cant = doc && chosen ? sectionAt(doc, 'cant', chosen.pk) : null;
@@ -150,6 +191,7 @@ export function LocatePanel(p: Props) {
       </div>
 
       <div className="sheet-body">
+        {chosen && <PkForm onGo={(text) => p.onGoPk(chosen.code, text)} />}
         <div className="field-label">Ma distance aux voies</div>
         <div className="chips">
           {DISTANCES.map((d) => (

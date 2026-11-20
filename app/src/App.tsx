@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FeatureCollection } from 'geojson';
 import type { MapGeoJSONFeature } from 'maplibre-gl';
 import { LocatePanel, type LocateState } from './components/LocatePanel';
-import { Disclaimer, FeatureCard, FilterSheet, InfoSheet, OfflineSheet, Search } from './components/Sheets';
+import { Disclaimer, FeatureCard, FilterSheet, InfoSheet, OfflineSheet, Search, type ImportStatus } from './components/Sheets';
+import { TargetSheet, type Origin, type TargetState } from './components/TargetSheet';
+import { accesFeatures, loadAcces, readAccesFile, saveAcces, snapAcces, type AccesSet } from './lib/acces';
+import { fmtLine, fmtPk } from './lib/format';
+import { parsePk, pkRange, positionsAtPk } from './lib/pk';
 import { loadCell, loadLine, loadManifest, type Manifest } from './lib/data';
 import type { LonLat } from './lib/geo';
 import { acquire, follow, geoErrorMessage, type Acquisition, type Fix } from './lib/gps';
@@ -30,6 +34,12 @@ export default function App() {
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [picked, setPicked] = useState<{ f: MapGeoJSONFeature; at: LonLat } | null>(null);
   const [mapKey, setMapKey] = useState(0);
+  const [target, setTarget] = useState<TargetState | null>(null);
+  const [targetExpanded, setTargetExpanded] = useState(false);
+  const [acces, setAcces] = useState<AccesSet[]>(() => loadAcces());
+  const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const acquisition = useRef<Acquisition | null>(null);
   const stopFollow = useRef<(() => void) | null>(null);
   const busy = useRef(false);
@@ -137,6 +147,78 @@ export default function App() {
 
   const toggleFilter = (k: FilterKey) => setFilters((f) => ({ ...f, [k]: !f[k] }));
 
+  const showToast = (text: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(text);
+    toastTimer.current = setTimeout(() => setToast(null), 6000);
+  };
+
+  /** « Aller au PK » : position du PK sur la ligne, distance depuis ma position, accès proches. */
+  const goToPk = async (code: string, input: number | string) => {
+    const pk = typeof input === 'number' ? input : parsePk(input);
+    if (pk === null) return showToast('PK non reconnu : écris par exemple 45,2 ou 45+200.');
+    try {
+      const doc = await loadLine(code);
+      const positions = positionsAtPk(doc, pk);
+      if (!positions.length) {
+        const [lo, hi] = pkRange(doc);
+        return showToast(`Le PK ${fmtPk(pk)} n’est pas sur la ligne ${fmtLine(code)} (PK ${fmtPk(lo)} à ${fmtPk(hi)}).`);
+      }
+      setPicked(null);
+      setTargetExpanded(false);
+      setTarget({ code, pk, doc, positions, idx: 0, dest: { name: `PK ${fmtPk(pk)}`, lonlat: positions[0].lonlat } });
+      focusOn(positions[0].lonlat, 15);
+    } catch {
+      showToast('Ligne indisponible pour le moment (pas de réseau ?).');
+    }
+  };
+
+  const origin: Origin | null =
+    loc.phase === 'result' && loc.chosen ? { code: loc.chosen.code, pk: loc.chosen.pk, lonlat: loc.fix.lonlat } : null;
+
+  const targetFC = useMemo<FeatureCollection | null>(() => {
+    if (!target) return null;
+    const at = target.positions[target.idx].lonlat;
+    return {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: { label: `PK ${fmtPk(target.pk)}`, n: `PK ${fmtPk(target.pk)}`, c: target.code }, geometry: { type: 'Point', coordinates: at } }],
+    };
+  }, [target]);
+  const accesFC = useMemo(() => accesFeatures(acces), [acces]);
+
+  const importAcces = async (file: File) => {
+    setImportStatus({ busy: true, text: '' });
+    try {
+      const { title, points } = await readAccesFile(file);
+      if (!points.length) throw new Error('Aucun point trouvé dans ce fichier.');
+      const items = await snapAcces(points);
+      const name = title || file.name.replace(/\.(kml|kmz|geojson|json)$/i, '');
+      const next = [...acces, { id: String(Date.now()), name, imported: Date.now(), items }];
+      if (!saveAcces(next)) throw new Error('Le téléphone a refusé l’enregistrement (stockage plein ?).');
+      setAcces(next);
+      setFilters((f) => ({ ...f, acces: true }));
+      const snapped = items.filter((a) => a.code).length;
+      setImportStatus({ busy: false, text: `${items.length} accès importés, dont ${snapped} rattachés à une ligne avec leur PK.` });
+    } catch (e) {
+      setImportStatus({ busy: false, error: true, text: e instanceof Error ? e.message : 'Import impossible.' });
+    }
+  };
+
+  const deleteSet = (id: string) => {
+    const next = acces.filter((s) => s.id !== id);
+    saveAcces(next);
+    setAcces(next);
+    setImportStatus(null);
+  };
+
+  const showSet = (set: AccesSet) => {
+    if (!set.items.length) return;
+    const lon = set.items.reduce((a, x) => a + x.lonlat[0], 0) / set.items.length;
+    const lat = set.items.reduce((a, x) => a + x.lonlat[1], 0) / set.items.length;
+    setPanel('none');
+    focusOn([lon, lat], 11);
+  };
+
   return (
     <div className="app">
       <MapView
@@ -144,6 +226,8 @@ export default function App() {
         basemap={basemap}
         filters={filters}
         me={me}
+        target={targetFC}
+        acces={accesFC}
         focus={focus}
         onFeature={(f, at) => setPicked({ f, at })}
         onLongPress={(at) => placeHere(at)}
@@ -151,7 +235,7 @@ export default function App() {
       />
 
       <header className="topbar">
-        <Search manifest={manifest} onGo={focusOn} />
+        <Search manifest={manifest} onGo={focusOn} onPk={(code, pk) => void goToPk(code, pk)} />
         <button className="icon-btn raised" onClick={() => setPanel('filters')} aria-label="Couches et fond de carte">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <path d="M12 3 2 8l10 5 10-5-10-5Zm-8.4 9L2 13l10 5 10-5-1.6-1-8.4 4.2L3.6 12Zm0 4L2 17l10 5 10-5-1.6-1-8.4 4.2L3.6 16Z" fill="currentColor" />
@@ -168,6 +252,11 @@ export default function App() {
       </header>
 
       {dataError && <div className="toast error">Données indisponibles : {dataError}</div>}
+      {toast && (
+        <div className="toast" role="status" onClick={() => setToast(null)}>
+          {toast}
+        </div>
+      )}
 
       <div className="fab-zone">
         {PREVIEW && loc.phase === 'idle' && !picked && <div className="hint">Aperçu sans GPS : appui long sur la carte = me placer ici</div>}
@@ -185,6 +274,22 @@ export default function App() {
         <FeatureCard feature={picked.f} at={picked.at} manifest={manifest} onPlaceHere={placeHere} onClose={() => setPicked(null)} />
       )}
 
+      {target ? (
+        <TargetSheet
+          target={target}
+          origin={origin}
+          acces={acces}
+          filters={filters}
+          expanded={targetExpanded}
+          onToggleExpand={() => setTargetExpanded((e) => !e)}
+          onPosition={(idx) =>
+            setTarget((t) => t && { ...t, idx, dest: { name: `PK ${fmtPk(t.pk)}`, lonlat: t.positions[idx].lonlat } })
+          }
+          onDest={(dest) => setTarget((t) => t && { ...t, dest })}
+          onFocus={(at) => focusOn(at, 16)}
+          onClose={() => setTarget(null)}
+        />
+      ) : (
       <LocatePanel
         state={loc}
         manifest={manifest}
@@ -195,13 +300,27 @@ export default function App() {
         onToggleExpand={() => setExpanded((e) => !e)}
         onDeclared={setDeclared}
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}
+        onGoPk={(code, text) => void goToPk(code, text)}
+        acces={acces}
         onFocus={(at) => focusOn(at, 17)}
         onStopAcquire={() => acquisition.current?.cancel()}
         onClose={closeLocate}
       />
+      )}
 
       {panel === 'filters' && (
-        <FilterSheet filters={filters} basemap={basemap} onToggle={toggleFilter} onBasemap={setBasemap} onClose={() => setPanel('none')} />
+        <FilterSheet
+          filters={filters}
+          basemap={basemap}
+          onToggle={toggleFilter}
+          onBasemap={setBasemap}
+          acces={acces}
+          importStatus={importStatus}
+          onImport={(f) => void importAcces(f)}
+          onDeleteSet={deleteSet}
+          onShowSet={showSet}
+          onClose={() => setPanel('none')}
+        />
       )}
       {panel === 'offline' && (
         <OfflineSheet

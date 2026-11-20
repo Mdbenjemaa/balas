@@ -9,7 +9,7 @@ import { ChunkedSource, DATA_URL, OfflineFirstSource, PMTILES_URL } from '../lib
 import { PREVIEW } from '../lib/env';
 import type { LonLat } from '../lib/geo';
 import { FILTERS, type Filters } from '../lib/layers';
-import { buildStyle, glyphProtocol, INTERACTIVE_LAYERS, type Basemap } from './style';
+import { buildStyle, glyphProtocol, INTERACTIVE_LAYERS, type Basemap, type Overlays } from './style';
 
 setWorkerUrl(workerUrl);
 
@@ -19,6 +19,14 @@ addProtocol('pmtiles', protocol.tile);
 export const railSource = PREVIEW ? new ChunkedSource(`${DATA_URL}rail/`) : new OfflineFirstSource(PMTILES_URL);
 if (PREVIEW) addProtocol('glyph', glyphProtocol);
 protocol.add(new PMTiles(railSource));
+
+function setSource(m: MapLibreMap | null, id: string, data: FeatureCollection | null) {
+  const empty: FeatureCollection = { type: 'FeatureCollection', features: [] };
+  const apply = () => (m?.getSource(id) as GeoJSONSource | undefined)?.setData(data ?? empty);
+  if (!m) return;
+  if (m.getSource(id)) apply();
+  else m.once('styledata', apply);
+}
 
 export interface FocusRequest {
   center: LonLat;
@@ -30,24 +38,33 @@ interface Props {
   basemap: Basemap;
   filters: Filters;
   me: FeatureCollection | null;
+  target: FeatureCollection | null;
+  acces: FeatureCollection | null;
   focus: FocusRequest | null;
   onFeature: (f: MapGeoJSONFeature, at: LonLat) => void;
   onLongPress: (at: LonLat) => void;
   onMapTap: () => void;
 }
 
-export function MapView({ basemap, filters, me, focus, onFeature, onLongPress, onMapTap }: Props) {
+export function MapView({ basemap, filters, me, target, acces, focus, onFeature, onLongPress, onMapTap }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const latest = useRef({ filters, me, onFeature, onLongPress, onMapTap });
-  latest.current = { filters, me, onFeature, onLongPress, onMapTap };
+  const latest = useRef({ filters, me, target, acces, onFeature, onLongPress, onMapTap });
+  latest.current = { filters, me, target, acces, onFeature, onLongPress, onMapTap };
+  const overlays = (): Overlays => ({ me: latest.current.me, target: latest.current.target, acces: latest.current.acces });
+  const syncOverlays = (m: MapLibreMap) => {
+    const o = overlays();
+    setSource(m, 'me', o.me);
+    setSource(m, 'target', o.target);
+    setSource(m, 'acces', o.acces);
+  };
 
   // Création de la carte.
   useEffect(() => {
     let cancelled = false;
     let m: MapLibreMap | null = null;
     (async () => {
-      const style = await buildStyle(basemap, latest.current.filters, latest.current.me);
+      const style = await buildStyle(basemap, latest.current.filters, overlays());
       if (cancelled || !container.current) return;
       const created = new MapLibreMap({
         container: container.current,
@@ -62,6 +79,8 @@ export function MapView({ basemap, filters, me, focus, onFeature, onLongPress, o
       created.touchZoomRotate.disableRotation();
       created.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
       map.current = created;
+      // Le style a été préparé avant la création : on y remet les points arrivés entre-temps.
+      created.once('load', () => syncOverlays(created));
 
       created.on('click', (e) => {
         const { x, y } = e.point;
@@ -112,8 +131,11 @@ export function MapView({ basemap, filters, me, focus, onFeature, onLongPress, o
       return;
     }
     let cancelled = false;
-    buildStyle(basemap, latest.current.filters, latest.current.me).then((style) => {
-      if (!cancelled) map.current?.setStyle(style);
+    buildStyle(basemap, latest.current.filters, overlays()).then((style) => {
+      const m = map.current;
+      if (cancelled || !m) return;
+      m.setStyle(style);
+      m.once('styledata', () => syncOverlays(m));
     });
     return () => {
       cancelled = true;
@@ -135,12 +157,10 @@ export function MapView({ basemap, filters, me, focus, onFeature, onLongPress, o
     else m.once('styledata', apply);
   }, [filters]);
 
-  // Position de l'utilisateur.
-  useEffect(() => {
-    const m = map.current;
-    const src = m?.getSource('me') as GeoJSONSource | undefined;
-    src?.setData(me ?? { type: 'FeatureCollection', features: [] });
-  }, [me]);
+  // Position de l'utilisateur, destination, accès importés.
+  useEffect(() => setSource(map.current, 'me', me), [me]);
+  useEffect(() => setSource(map.current, 'target', target), [target]);
+  useEffect(() => setSource(map.current, 'acces', acces), [acces]);
 
   // Recentrage demandé.
   useEffect(() => {

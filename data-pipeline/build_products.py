@@ -277,6 +277,16 @@ for name, feats in tile_layers.items():
 print('couches carte', {k: len(v) for k, v in tile_layers.items()})
 
 # ---------- Fiches de ligne ----------
+def encode_verts(verts):
+    """Géométrie d'un tronçon avec PK : lon et lat en 1e-5 degré, PK en mètres, en différences."""
+    out, prev = [], (0, 0, 0)
+    for lon, lat, pk in verts:
+        v = (round(lon * 1e5), round(lat * 1e5), round(pk * 1000))
+        out += [v[0] - prev[0], v[1] - prev[1], v[2] - prev[2]]
+        prev = v
+    return out
+
+
 by_code = defaultdict(list)
 for t in lines:
     by_code[t['code']].append(t)
@@ -289,7 +299,8 @@ for code, ts in by_code.items():
     lo = min(min(t['pkd'], t['pkf']) for t in ts)
     hi = max(max(t['pkd'], t['pkf']) for t in ts)
     doc = {'code': code, 'name': names.get(code), 'pk': [lo, hi],
-           'troncons': [{'rg': t['rg'], 'pkd': t['pkd'], 'pkf': t['pkf'], 'statut': t['statut']} for t in ts],
+           'troncons': [{'rg': t['rg'], 'pkd': t['pkd'], 'pkf': t['pkf'], 'statut': t['statut'],
+                         'g': encode_verts(t['verts'])} for t in ts],
            'sections': secs, 'points': pts}
     json.dump(doc, open(DATA / 'lines' / f'{code}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
     line_index[code] = {'n': names.get(code), 'pk': [round(lo, 3), round(hi, 3)]}

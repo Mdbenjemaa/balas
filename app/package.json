@@ -12,6 +12,7 @@
     "build:preview": "VITE_PREVIEW=1 vite build && python3 ../scripts/assemble_preview.py"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "maplibre-gl": "^6.19.0",
     "pmtiles": "^4.5.0",
     "react": "^19.3.1",

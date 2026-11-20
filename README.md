@@ -17,6 +17,8 @@ vitesse…). Elle marche sur iPhone et Android, **même sans réseau** une fois 
 | Voie la plus proche | Nom SNCF des voies proches (V1, V2, 1, 2BIS…), à titre indicatif (le GPS d'un téléphone se trompe souvent de 5 à 10 m) |
 | Autour de moi | Éléments vers les PK croissants et décroissants, avec distance et PK ; « vous êtes dans » pour un tunnel ou un quai |
 | Caractéristiques au PK | Statut, vitesse nominale, électrification, cantonnement, KVB, écartement |
+| Aller au PK | Depuis ma position (« Aller au PK » sous le PK affiché) ou par la recherche (« 830000 45+200 ») : le PK sur la carte, la distance le long de la ligne et le sens, ce qu'il y a autour, et un itinéraire en voiture (Plans, Google Maps, Waze) |
+| Mes accès | Import d'une carte d'accès exportée de Google My Maps (KML ou KMZ) ou en GeoJSON. Chaque accès reçoit sa ligne et son PK, apparaît sur la carte et dans les listes, et peut servir de destination. Les accès restent dans le téléphone : ils ne sont ni envoyés ni publiés |
 | Suivre en marchant | Met à jour le PK en continu (écran allumé) |
 | Me placer ici | Appui long sur la carte : repérage sans GPS (préparer une intervention, GPS mauvais) |
 | Carte et filtres | PK tous les 100 m, bornes OSM, gares, quais, voies et numéros, PN, tunnels, ponts, sous-stations, carrés et sémaphores, avertissements, TIV et pancartes Z/R, signaux électriques, vitesses et électrification en couleurs ; fond plan ou photo aérienne IGN |

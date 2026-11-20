@@ -37,7 +37,8 @@ export interface LineDoc {
   code: string;
   name: string | null;
   pk: [number, number];
-  troncons: { rg: string; pkd: number; pkf: number; statut: string }[];
+  /** g : géométrie avec PK (lon, lat en 1e-5 degré, PK en m), en différences ; voir decodeGeom. */
+  troncons: { rg: string; pkd: number; pkf: number; statut: string; g?: number[] }[];
   sections: Partial<Record<SectionKind, [number, number, string][]>>;
   points: LinePoint[];
 }
