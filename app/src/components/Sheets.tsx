@@ -1,0 +1,422 @@
+import { PREVIEW } from '../lib/env';
+import { useEffect, useRef, useState } from 'react';
+import type { Point } from 'geojson';
+import type { MapGeoJSONFeature } from 'maplibre-gl';
+import {
+  clearOffline,
+  downloadOffline,
+  loadGares,
+  offlineState,
+  storageEstimate,
+  type GareEntry,
+  type Manifest,
+  type OfflineState,
+} from '../lib/data';
+import { fmtLine } from '../lib/format';
+import type { LonLat } from '../lib/geo';
+import { FILTERS, type FilterKey, type Filters } from '../lib/layers';
+import type { Basemap } from '../map/style';
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Fermer">
+            ×
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Filtres et fond de carte ---------- */
+
+export function FilterSheet(p: {
+  filters: Filters;
+  basemap: Basemap;
+  onToggle: (k: FilterKey) => void;
+  onBasemap: (b: Basemap) => void;
+  onClose: () => void;
+}) {
+  const groups = [...new Set(FILTERS.map((f) => f.group))];
+  return (
+    <Modal title="Couches" onClose={p.onClose}>
+      <div className="field-label">Fond de carte</div>
+      <div className="chips">
+        {(
+          [
+            ['plan', PREVIEW ? 'Plan simplifié' : 'Plan'],
+            ['photo', 'Photo aérienne IGN'],
+            ['aucun', 'Aucun (hors-ligne)'],
+          ] as [Basemap, string][]
+        ).filter(([v]) => !PREVIEW || v !== 'photo').map(([v, l]) => (
+          <button key={v} className={`chip ${p.basemap === v ? 'on' : ''}`} onClick={() => p.onBasemap(v)}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {groups.map((g) => (
+        <div key={g}>
+          <div className="field-label">{g}</div>
+          {FILTERS.filter((f) => f.group === g).map((f) => (
+            <label key={f.key} className="toggle">
+              <span>
+                {f.label}
+                {f.hint && <small>{f.hint}</small>}
+              </span>
+              <input type="checkbox" checked={p.filters[f.key]} onChange={() => p.onToggle(f.key)} />
+            </label>
+          ))}
+        </div>
+      ))}
+      <p className="muted small">
+        Les signaux viennent d’OpenStreetMap : couverture partielle selon les secteurs, et pas toujours à jour.
+      </p>
+    </Modal>
+  );
+}
+
+/* ---------- Hors-ligne ---------- */
+
+export function OfflineSheet(p: { manifest: Manifest | null; onChanged: () => void; onClose: () => void }) {
+  const [state, setState] = useState<OfflineState | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<number | null>(null);
+  const abort = useRef<AbortController | null>(null);
+
+  const refresh = async () => {
+    if (!p.manifest) return;
+    setState(await offlineState(p.manifest));
+    setUsage((await storageEstimate())?.usage ?? null);
+  };
+  useEffect(() => {
+    void refresh();
+    return () => abort.current?.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.manifest]);
+
+  const start = async () => {
+    if (!p.manifest) return;
+    setError(null);
+    abort.current = new AbortController();
+    try {
+      // Demande au navigateur de ne pas effacer ces données en cas de manque de place.
+      await navigator.storage?.persist?.();
+      await downloadOffline(p.manifest, (done, total, label) => setProgress({ done, total, label }), abort.current.signal);
+      p.onChanged();
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+    } finally {
+      setProgress(null);
+      void refresh();
+    }
+  };
+
+  const complete = state && state.pmtiles && state.files === state.total;
+  return (
+    <Modal title="Hors-ligne" onClose={p.onClose}>
+      <p>
+        Télécharge toutes les données ferroviaires de France sur le téléphone : la carte des voies, les PK et le repérage
+        marcheront sans réseau.
+      </p>
+      {state && (
+        <p className={complete ? 'ok' : 'muted'}>
+          {complete
+            ? 'Toutes les données sont sur le téléphone.'
+            : `Sur le téléphone : ${state.files} fichiers sur ${state.total}${state.pmtiles ? ', carte des voies incluse' : ', carte des voies non téléchargée'}.`}
+        </p>
+      )}
+      {progress ? (
+        <div>
+          <div className="progress">
+            <div style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} />
+          </div>
+          <p className="muted small">
+            {progress.label} {Math.round((progress.done / progress.total) * 100)} %
+          </p>
+          <button className="btn" onClick={() => abort.current?.abort()}>
+            Annuler
+          </button>
+        </div>
+      ) : (
+        <div className="row">
+          <button className="btn primary" onClick={start} disabled={!p.manifest}>
+            {complete ? 'Mettre à jour' : 'Télécharger toute la France (≈ 45 Mo)'}
+          </button>
+          {state && state.files > 0 && (
+            <button
+              className="btn"
+              onClick={async () => {
+                await clearOffline();
+                p.onChanged();
+                void refresh();
+              }}
+            >
+              Effacer
+            </button>
+          )}
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+      {usage !== null && <p className="muted small">Espace utilisé par l’appli : {(usage / 1e6).toFixed(0)} Mo.</p>}
+      <p className="muted small">
+        Le fond de carte (plan, photo) n’est gardé que pour les zones déjà affichées avec du réseau. Sans lui, les voies, PK et
+        éléments restent visibles sur fond uni.
+      </p>
+    </Modal>
+  );
+}
+
+/* ---------- Informations ---------- */
+
+export function InfoSheet(p: { manifest: Manifest | null; onClose: () => void }) {
+  const q = p.manifest?.quality;
+  return (
+    <Modal title="À propos" onClose={p.onClose}>
+      <div className="warn-box">
+        <b>Aide au repérage uniquement.</b> Ne remplace jamais les documents officiels (renseignements techniques, consignes,
+        avis), l’annonce, la protection ou les échanges avec l’agent circulation. Positions, PK et signaux peuvent être
+        approximatifs, incomplets ou périmés.
+      </div>
+      <h3>Comment le PK est calculé</h3>
+      <p>
+        Le GPS donne ta position ; l’appli la rattache à la ligne SNCF la plus proche (ou à celle qui correspond à la distance
+        indiquée) et lit le PK à cet endroit. Les PK le long des lignes sont recalés sur les quelque 63 000 repères dont SNCF
+        Réseau publie à la fois le PK et la position : PN, gares, ponts-route, quais, extrémités de voies et de sections.
+      </p>
+      {q && (
+        <ul className="small">
+          <li>
+            Contrôle sur {q.pk_recalage.validation_points?.toLocaleString('fr-FR')} repères masqués : écart médian{' '}
+            {q.pk_recalage.erreur_mediane_m} m, 90 % sous {q.pk_recalage.erreur_p90_m} m.
+          </li>
+          <li>
+            Contrôle indépendant sur {q.controle_bornes_osm.bornes_comparees?.toLocaleString('fr-FR')} bornes kilométriques
+            relevées dans OpenStreetMap : écart médian {q.controle_bornes_osm.ecart_median_m} m, 75 % sous{' '}
+            {q.controle_bornes_osm.ecart_p75_m} m.
+          </li>
+          <li>À cela s’ajoute l’imprécision du GPS du téléphone (souvent 5 à 15 m).</li>
+        </ul>
+      )}
+      <h3>Astuces</h3>
+      <ul className="small">
+        <li>« Me repérer » écoute le GPS jusqu’à 12 s et combine les mesures : reste immobile, à découvert.</li>
+        <li>Indique ta distance aux voies : l’appli choisit mieux entre deux lignes proches.</li>
+        <li>Appui long sur la carte : « me placer ici » (utile si le GPS est mauvais, ou pour préparer une intervention).</li>
+        <li>Touche un élément de la carte pour voir son PK et sa ligne.</li>
+      </ul>
+      <h3>Sources</h3>
+      <ul className="small">
+        {p.manifest?.sources.map((s) => (
+          <li key={s.name}>
+            {s.name} — {s.license}
+            {s.date ? ` (extrait du ${s.date})` : ''} —{' '}
+            <a href={s.url} target="_blank" rel="noreferrer">
+              {s.url.replace(/^https?:\/\//, '')}
+            </a>
+          </li>
+        ))}
+        <li>Fond plan : OpenFreeMap © OpenMapTiles, données © OpenStreetMap. Photo aérienne : © IGN (Licence Ouverte).</li>
+      </ul>
+      <p className="muted small">
+        Données SNCF Réseau publiées entre 2020 et 2022 : des modifications récentes du réseau peuvent manquer. Version des
+        données : {p.manifest?.version ?? '—'}. Projet personnel, indépendant de la SNCF.
+      </p>
+    </Modal>
+  );
+}
+
+/* ---------- Premier lancement ---------- */
+
+export function Disclaimer({ onAccept }: { onAccept: () => void }) {
+  return (
+    <div className="modal-back">
+      <div className="modal">
+        <div className="modal-body">
+          <h2>Repère Rail</h2>
+          <p>Pour savoir où tu es sur le réseau : ligne, PK, gares, PN, tunnels, signaux autour de toi.</p>
+          {PREVIEW && (
+            <p>
+              <b>Version d’essai :</b> ici le GPS et les fonds plan et photo sont bloqués. Cherche une gare, puis appuie
+              longuement sur la carte près des voies pour te placer.
+            </p>
+          )}
+          <div className="warn-box">
+            <b>Aide au repérage, jamais une référence de sécurité.</b> PK et signaux calculés à partir de données ouvertes (SNCF
+            Réseau, OpenStreetMap) : ils peuvent être faux, incomplets ou périmés. Ne t’en sers pas pour une annonce, une
+            protection de chantier ou une manœuvre ; vérifie toujours sur le terrain et dans les documents officiels.
+          </div>
+          <button className="btn primary wide" onClick={onAccept}>
+            J’ai compris
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Fiche d'un élément touché sur la carte ---------- */
+
+const LAYER_TITLE: Record<string, string> = {
+  'r-gares': 'Gare', 'r-pn': 'Passage à niveau', 'r-sst': 'Sous-station', 'r-ouvrages': 'Ouvrage',
+  'r-bornes': 'Borne kilométrique (OpenStreetMap)', 'r-pk-km': 'PK calculé', 'r-pk-hm': 'PK calculé',
+  'r-sig-carre': 'Signal (OpenStreetMap)', 'r-sig-avert': 'Signal (OpenStreetMap)', 'r-sig-vitesse': 'Pancarte (OpenStreetMap)',
+  'r-sig-elec': 'Signal électrique (OpenStreetMap)', 'r-sig-autre': 'Signal (OpenStreetMap)', 'r-quais': 'Quai',
+  'r-voies': 'Voie', 'r-tunnels': 'Tunnel (OpenStreetMap)', 'r-lignes': 'Ligne', 'r-lignes-autres': 'Ligne',
+};
+
+export function FeatureCard(p: {
+  feature: MapGeoJSONFeature;
+  at: LonLat;
+  manifest: Manifest | null;
+  onPlaceHere: (at: LonLat) => void;
+  onClose: () => void;
+}) {
+  const f = p.feature;
+  const pr = f.properties as Record<string, string | undefined>;
+  const layer = f.layer.id;
+  const title = LAYER_TITLE[layer] ?? 'Élément';
+  let name = pr.n ?? pr.l ?? '';
+  if (layer.startsWith('r-pk')) name = `PK ${pr.p}`;
+  if (layer === 'r-bornes') name = `Borne ${pr.p}`;
+  if (layer === 'r-voies') name = pr.n ? `Voie ${pr.n}` : 'Voie sans nom';
+  if (layer.startsWith('r-lignes')) name = `Ligne ${fmtLine(pr.c ?? '')}`;
+  const lineName = pr.c ? p.manifest?.lines[pr.c]?.n : null;
+  const point = f.geometry.type === 'Point' ? ((f.geometry as Point).coordinates as LonLat) : p.at;
+
+  return (
+    <section className="card">
+      <div className="sheet-head">
+        <div>
+          <div className="eyebrow">{title}</div>
+          <div className="card-title">{name}</div>
+        </div>
+        <button className="icon-btn" onClick={p.onClose} aria-label="Fermer">
+          ×
+        </button>
+      </div>
+      <dl className="facts">
+        {pr.pk && (
+          <>
+            <dt>PK</dt>
+            <dd>{pr.pk}</dd>
+          </>
+        )}
+        {pr.c && (
+          <>
+            <dt>Ligne</dt>
+            <dd>
+              {fmtLine(pr.c)}
+              {lineName ? ` — ${lineName}` : ''}
+            </dd>
+          </>
+        )}
+        {pr.d && (
+          <>
+            <dt>Détail</dt>
+            <dd>{pr.d}</dd>
+          </>
+        )}
+        {pr.g && (
+          <>
+            <dt>Gare</dt>
+            <dd>{pr.g}</dd>
+          </>
+        )}
+        {layer === 'r-voies' && pr.t && (
+          <>
+            <dt>Type SNCF</dt>
+            <dd>{pr.t}</dd>
+          </>
+        )}
+        {layer === 'r-gares' && (
+          <>
+            <dt>Service</dt>
+            <dd>{pr.k === 'V' ? 'Voyageurs' : 'Fret / service'}</dd>
+          </>
+        )}
+      </dl>
+      <button className="btn" onClick={() => p.onPlaceHere(point)}>
+        Me placer ici
+      </button>
+    </section>
+  );
+}
+
+/* ---------- Recherche ---------- */
+
+const norm = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+export function Search(p: { manifest: Manifest | null; onGo: (at: LonLat, zoom: number) => void }) {
+  const [q, setQ] = useState('');
+  const [gares, setGares] = useState<GareEntry[] | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (open && !gares) loadGares().then(setGares).catch(() => setGares([]));
+  }, [open, gares]);
+
+  const nq = norm(q);
+  const results: { label: string; sub: string; at: LonLat; zoom: number }[] = [];
+  if (nq.length >= 2) {
+    const digits = nq.replace(/\s/g, '');
+    if (/^\d{3,6}$/.test(digits) && p.manifest) {
+      for (const [code, info] of Object.entries(p.manifest.lines)) {
+        if (code.startsWith(digits) && results.length < 4) {
+          const g = gares?.find((x) => x[3] === code);
+          if (g) results.push({ label: `Ligne ${fmtLine(code)}`, sub: info.n ?? '', at: [g[1], g[2]], zoom: 11 });
+        }
+      }
+    }
+    for (const g of gares ?? []) {
+      const k = norm(g[0]);
+      if (k.startsWith(nq) || k.includes(` ${nq}`)) {
+        results.push({ label: g[0], sub: `Gare · ligne ${fmtLine(g[3])}`, at: [g[1], g[2]], zoom: 15 });
+        if (results.length >= 8) break;
+      }
+    }
+  }
+
+  return (
+    <div className="search">
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onFocus={() => setOpen(true)}
+        placeholder="Gare ou numéro de ligne"
+        aria-label="Rechercher une gare ou une ligne"
+        enterKeyHint="search"
+      />
+      {open && results.length > 0 && (
+        <ul className="results">
+          {results.map((r, i) => (
+            <li key={i}>
+              <button
+                onClick={() => {
+                  p.onGo(r.at, r.zoom);
+                  setQ('');
+                  setOpen(false);
+                  (document.activeElement as HTMLElement | null)?.blur();
+                }}
+              >
+                <b>{r.label}</b>
+                <small>{r.sub}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
