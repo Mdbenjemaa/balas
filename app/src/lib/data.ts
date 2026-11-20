@@ -75,11 +75,53 @@ async function fromPack<T>(kind: 'c' | 'l', key: string): Promise<T> {
 
 let manifestPromise: Promise<Manifest> | null = null;
 export function loadManifest(): Promise<Manifest> {
-  manifestPromise ??= getJson<Manifest>(`${DATA_URL}manifest.json`).catch((e) => {
-    manifestPromise = null;
-    throw e;
-  });
+  manifestPromise ??= getJson<Manifest>(`${DATA_URL}manifest.json`)
+    .then(async (m) => {
+      await purgeIfNewData(m);
+      return m;
+    })
+    .catch((e) => {
+      manifestPromise = null;
+      throw e;
+    });
   return manifestPromise;
+}
+
+/** Nouvelle version des données : renseignée si le téléphone avait téléchargé la carte hors-ligne. */
+export const dataUpdate = { changed: false, hadOffline: false };
+const VERSION_KEY = 'rr-data-version';
+
+/**
+ * Les cases et fiches de ligne sont gardées sur le téléphone. Quand les données changent (nouvelle version
+ * dans le manifeste), on jette les anciennes pour ne pas mélanger anciens et nouveaux PK.
+ */
+async function purgeIfNewData(m: Manifest): Promise<void> {
+  let prev: string | null = null;
+  try {
+    prev = localStorage.getItem(VERSION_KEY);
+  } catch {
+    return;
+  }
+  if (prev === m.version) return;
+  if ('caches' in globalThis) {
+    try {
+      const cache = await caches.open(DATA_CACHE);
+      dataUpdate.hadOffline = !!(await cache.match(PMTILES_URL));
+      for (const req of await cache.keys()) if (!req.url.endsWith('manifest.json')) await cache.delete(req);
+    } catch {
+      /* stockage indisponible */
+    }
+  }
+  dataUpdate.changed = true;
+  cellCache.clear();
+  lineCache.clear();
+  corrected.clear();
+  garesPromise = null;
+  try {
+    localStorage.setItem(VERSION_KEY, m.version);
+  } catch {
+    /* rien */
+  }
 }
 
 const cellCache = new Map<string, Promise<Cell | null>>();

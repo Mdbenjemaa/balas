@@ -7,7 +7,7 @@ import { TargetSheet, type Origin, type TargetState } from './components/TargetS
 import { accesFeatures, loadAcces, readAccesFile, saveAcces, snapAcces, type AccesSet } from './lib/acces';
 import { fmtLine, fmtPk } from './lib/format';
 import { parsePk, pkRange, positionsAtPk } from './lib/pk';
-import { loadCell, loadLine, loadManifest, type Manifest } from './lib/data';
+import { dataUpdate, loadCell, loadLine, loadManifest, type Manifest } from './lib/data';
 import type { LonLat } from './lib/geo';
 import { acquire, follow, geoErrorMessage, type Acquisition, type Fix } from './lib/gps';
 import { DEFAULT_FILTERS, type FilterKey, type Filters } from './lib/layers';
@@ -96,7 +96,16 @@ export default function App() {
   const lastFix = useRef<{ fix: Fix; mode: 'gps' | 'manuel' | 'suivi'; forced?: string } | null>(null);
 
   useEffect(() => {
-    loadManifest().then(setManifest, (e: Error) => setDataError(e.message));
+    loadManifest().then((m) => {
+      setManifest(m);
+      if (dataUpdate.hadOffline) {
+        // La carte hors-ligne téléchargée est périmée : on repart des nouvelles données.
+        railSource.reset();
+        setMapKey((k) => k + 1);
+        showToast('Nouvelles données PK : pour le mode sans réseau, retélécharge la France (bouton flèche).');
+      }
+    }, (e: Error) => setDataError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => savePref('rr-filters', filters), [filters]);
   useEffect(() => savePref('rr-basemap', basemap), [basemap]);
