@@ -14,8 +14,10 @@ import {
 } from '../lib/data';
 import type { AccesSet } from '../lib/acces';
 import { fmtLine, fmtPk } from '../lib/format';
-import { parsePkQuery } from '../lib/pk';
+import { parsePk, parsePkQuery } from '../lib/pk';
 import { NavLinks } from './TargetSheet';
+import { InstallSteps } from './Install';
+import { installMode } from '../lib/install';
 import type { LonLat } from '../lib/geo';
 import { FILTERS, type FilterKey, type Filters } from '../lib/layers';
 import type { Basemap } from '../map/style';
@@ -254,6 +256,30 @@ export function InfoSheet(p: { manifest: Manifest | null; onClose: () => void })
         avis), l’annonce, la protection ou les échanges avec l’agent circulation. Positions, PK et signaux peuvent être
         approximatifs, incomplets ou périmés.
       </div>
+      <h3>Installer sur l’écran d’accueil</h3>
+      <InstallSteps mode={installMode()} />
+      <h3>Version</h3>
+      <p className="small">
+        Appli du {new Date(__BUILD__).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · données PK du{' '}
+        {p.manifest ? new Date(`${p.manifest.version}T12:00:00`).toLocaleDateString('fr-FR') : '…'}
+      </p>
+      <button
+        className="btn wide"
+        onClick={async () => {
+          // Dépannage : on jette l'appli et les données gardées, puis on recharge depuis le site.
+          try {
+            if ('caches' in globalThis) for (const k of await caches.keys()) if (k !== 'fond-plan' && k !== 'fond-photo') await caches.delete(k);
+            localStorage.removeItem('rr-data-version');
+            const regs = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+            await Promise.all(regs.map((r) => r.update().catch(() => undefined)));
+          } finally {
+            location.reload();
+          }
+        }}
+      >
+        Recharger l’appli et les données
+      </button>
+      <p className="muted small">À utiliser si les PK ou l’appli semblent anciens. Il faut du réseau ; le téléchargement hors-ligne sera à refaire.</p>
       <h3>Comment le PK est calculé</h3>
       <p>
         Le GPS donne ta position ; l’appli la rattache à la ligne SNCF la plus proche (ou à celle qui correspond à la distance
@@ -452,6 +478,8 @@ const norm = (s: string) =>
 
 export function Search(p: {
   manifest: Manifest | null;
+  /** Ligne où l'on se trouve (ou celle du chantier) : un PK tapé seul s'y rapporte. */
+  currentLine: string | null;
   onGo: (at: LonLat, zoom: number) => void;
   onPk: (code: string, pk: number) => void;
 }) {
@@ -473,7 +501,21 @@ export function Search(p: {
       pk: pkq,
     });
   }
-  if (nq.length >= 2 && !pkq) {
+  // PK tapé seul (« 45+200 », « 45,2 », « PK 45 ») : sur la ligne où l'on est.
+  const pkAlone = !pkq && /^\s*(pk\s*)?-?\d{1,4}(\s*[+,.]\s*\d{1,3})?\s*$/i.test(q) && (/[+,.]|pk/i.test(q) || q.trim().length <= 3);
+  const alonePk = pkAlone ? parsePk(q) : null;
+  if (alonePk !== null) {
+    if (p.currentLine && p.manifest?.lines[p.currentLine]) {
+      results.push({
+        label: `PK ${fmtPk(alonePk)} · ligne ${fmtLine(p.currentLine)}`,
+        sub: `${p.manifest.lines[p.currentLine].n ?? ''} (ta ligne)`,
+        pk: { code: p.currentLine, pk: alonePk },
+      });
+    } else {
+      results.push({ label: `PK ${fmtPk(alonePk)} : sur quelle ligne ?`, sub: 'Repère-toi d’abord, ou tape la ligne puis le PK : 830000 45+200' });
+    }
+  }
+  if (nq.length >= 2 && !pkq && !(alonePk !== null && /[+,.]|pk/i.test(q))) {
     const digits = nq.replace(/\s/g, '');
     if (/^\d{3,6}$/.test(digits) && p.manifest) {
       for (const [code, info] of Object.entries(p.manifest.lines)) {
@@ -507,6 +549,7 @@ export function Search(p: {
           {results.map((r, i) => (
             <li key={i}>
               <button
+                disabled={!r.pk && !r.at}
                 onClick={() => {
                   if (r.pk) p.onPk(r.pk.code, r.pk.pk);
                   else if (r.at) p.onGo(r.at, r.zoom ?? 15);

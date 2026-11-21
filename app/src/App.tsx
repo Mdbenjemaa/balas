@@ -25,6 +25,7 @@ import { positionFrom } from './lib/equipe/position';
 import type { NewItem } from './lib/equipe/store';
 import { useEquipe } from './lib/equipe/useEquipe';
 import { CorrectionForm, type CorrectionTarget } from './components/CorrectionForm';
+import { InstallBanner } from './components/Install';
 import { envoyerEnAttente, onCorrections, refreshCorrections } from './lib/corrections';
 import { correctedPkMarks } from './lib/pkmarks';
 import type { Basemap } from './map/style';
@@ -373,7 +374,12 @@ export default function App() {
       />
 
       <header className="topbar">
-        <Search manifest={manifest} onGo={focusOn} onPk={(code, pk) => void goToPk(code, pk)} />
+        <Search
+          manifest={manifest}
+          currentLine={(loc.phase === 'result' && loc.chosen?.code) || eq.etat?.chantier.ligne || null}
+          onGo={focusOn}
+          onPk={(code, pk) => void goToPk(code, pk)}
+        />
         <button className="icon-btn raised" onClick={() => setPanel('filters')} aria-label="Couches et fond de carte">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <path d="M12 3 2 8l10 5 10-5-10-5Zm-8.4 9L2 13l10 5 10-5-1.6-1-8.4 4.2L3.6 12Zm0 4L2 17l10 5 10-5-1.6-1-8.4 4.2L3.6 16Z" fill="currentColor" />
@@ -542,6 +548,7 @@ export default function App() {
         />
       )}
       {panel === 'rapport' && eq.etat && <RapportForm eq={eq} existing={rapport} onClose={() => setPanel('chantier')} />}
+      {ack && !PREVIEW && panel === 'none' && <InstallBanner />}
       {!ack && (
         <Disclaimer
           onAccept={() => {

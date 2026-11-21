@@ -251,3 +251,13 @@ textarea.text { resize: vertical; min-height: 64px; }
 .corr .item-main small { color: var(--muted); }
 .corr.refusee { opacity: 0.55; }
 .corr.proposee .item-main b:first-child { color: #92400e; }
+
+/* Installation sur l'écran d'accueil */
+.install-banner { position: fixed; left: 10px; right: 10px; top: calc(env(safe-area-inset-top, 0px) + 72px); z-index: 15; background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); padding: 12px 14px; border: 2px solid #112f54; }
+.install-head { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.install-head img { border-radius: 10px; flex: none; }
+.install-head div { flex: 1; display: flex; flex-direction: column; }
+.install-head small { color: var(--muted); }
+.install-steps { margin: 6px 0; padding-left: 22px; font-size: 15px; line-height: 1.5; }
+.share-ico { vertical-align: -4px; color: #007aff; }
+@media (min-width: 900px) { .install-banner { right: auto; width: 420px; } }

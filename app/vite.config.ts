@@ -9,12 +9,20 @@ const preview = process.env.VITE_PREVIEW === '1';
 
 export default defineConfig({
   base: preview ? './' : base,
+  define: { __BUILD__: JSON.stringify(new Date().toISOString()) },
   build: preview ? { outDir: 'dist-preview', copyPublicDir: false } : undefined,
   plugins: [
     react(),
+    // Aperçu sans service worker : module d'enregistrement vide.
+    preview && {
+      name: 'pwa-register-vide',
+      resolveId: (id: string) => (id === 'virtual:pwa-register' ? '\0pwa-register-vide' : null),
+      load: (id: string) => (id === '\0pwa-register-vide' ? 'export function registerSW() { return () => Promise.resolve(); }' : null),
+    },
     !preview && VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // Enregistrement fait dans main.tsx : l'appli se recharge seule dès qu'une nouvelle version est installée.
+      injectRegister: false,
       includeAssets: ['apple-touch-icon.png', 'fonts/**/*.pbf'],
       manifest: {
         name: 'Repère Rail',
@@ -37,6 +45,9 @@ export default defineConfig({
         // L'appli elle-même est précachée ; les données sont gérées à part (bouton « hors-ligne »).
         globPatterns: ['**/*.{js,css,html,png,svg,pbf}'],
         globIgnores: ['data/**'],
+        // La nouvelle version prend la main tout de suite (l'appli se recharge alors toute seule).
+        clientsClaim: true,
+        skipWaiting: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallbackDenylist: [/\/data\//],
         runtimeCaching: [

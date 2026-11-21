@@ -87,6 +87,9 @@ export function loadManifest(): Promise<Manifest> {
   return manifestPromise;
 }
 
+/** Adresse d'un fichier de données propre à leur version : une ancienne copie gardée ne peut pas resservir. */
+const versioned = (url: string, m: Manifest) => (PREVIEW ? url : `${url}?v=${encodeURIComponent(m.version)}`);
+
 /** Nouvelle version des données : renseignée si le téléphone avait téléchargé la carte hors-ligne. */
 export const dataUpdate = { changed: false, hadOffline: false };
 const VERSION_KEY = 'rr-data-version';
@@ -129,7 +132,7 @@ export function loadCell(key: string, known: Set<string>): Promise<Cell | null> 
   if (!known.has(key)) return Promise.resolve(null);
   let p = cellCache.get(key);
   if (!p) {
-    p = (PREVIEW ? fromPack<Cell>('c', key) : getJson<Cell>(`${DATA_URL}cells/${key}.json`)).catch((e) => {
+    p = (PREVIEW ? fromPack<Cell>('c', key) : loadManifest().then((m) => getJson<Cell>(versioned(`${DATA_URL}cells/${key}.json`, m)))).catch((e) => {
       cellCache.delete(key);
       throw e;
     });
@@ -189,7 +192,7 @@ export async function loadLine(code: string): Promise<LineDoc> {
 function loadLineRaw(code: string): Promise<LineDoc> {
   let p = lineCache.get(code);
   if (!p) {
-    p = (PREVIEW ? fromPack<LineDoc>('l', code) : getJson<LineDoc>(`${DATA_URL}lines/${code}.json`)).catch((e) => {
+    p = (PREVIEW ? fromPack<LineDoc>('l', code) : loadManifest().then((m) => getJson<LineDoc>(versioned(`${DATA_URL}lines/${code}.json`, m)))).catch((e) => {
       lineCache.delete(code);
       throw e;
     });
@@ -200,7 +203,7 @@ function loadLineRaw(code: string): Promise<LineDoc> {
 
 let garesPromise: Promise<GareEntry[]> | null = null;
 export function loadGares(): Promise<GareEntry[]> {
-  garesPromise ??= getJson<GareEntry[]>(`${DATA_URL}gares.json`).catch((e) => {
+  garesPromise ??= loadManifest().then((m) => getJson<GareEntry[]>(versioned(`${DATA_URL}gares.json`, m))).catch((e) => {
     garesPromise = null;
     throw e;
   });
@@ -321,9 +324,9 @@ export interface OfflineState {
 function allDataUrls(m: Manifest): string[] {
   return [
     `${DATA_URL}manifest.json`,
-    `${DATA_URL}gares.json`,
-    ...m.cells.map((c) => `${DATA_URL}cells/${c}.json`),
-    ...Object.keys(m.lines).map((c) => `${DATA_URL}lines/${c}.json`),
+    versioned(`${DATA_URL}gares.json`, m),
+    ...m.cells.map((c) => versioned(`${DATA_URL}cells/${c}.json`, m)),
+    ...Object.keys(m.lines).map((c) => versioned(`${DATA_URL}lines/${c}.json`, m)),
   ];
 }
 
