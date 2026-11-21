@@ -1,4 +1,4 @@
-import type { Gravite } from './api';
+import type { Gravite, Signalement, Statut } from './api';
 
 export interface Choice {
   key: string;
@@ -25,6 +25,26 @@ export const GRAVITES: (Choice & { key: Gravite })[] = [
   { key: 'a_traiter', label: 'À traiter', color: '#ea580c' },
   { key: 'urgent', label: 'Urgent', color: '#dc2626' },
 ];
+
+/** Suivi d'un signalement. */
+export const STATUTS: (Choice & { key: Statut })[] = [
+  { key: 'nouveau', label: 'Nouveau', color: '#2563eb' },
+  { key: 'en_cours', label: 'En cours', color: '#d97706' },
+  { key: 'traite', label: 'Traité', color: '#15803d' },
+];
+
+/** Les données gardées sur le téléphone avant cette version n'ont pas de statut. */
+export const statutOf = (s: Pick<Signalement, 'statut'>): Statut => s.statut ?? 'nouveau';
+
+const ORDRE_GRAVITE: Record<Gravite, number> = { urgent: 0, a_traiter: 1, info: 2 };
+
+/** Ordre d'affichage : à traiter d'abord, puis les plus graves, puis les plus récents. */
+export function trierSignalements<T extends Signalement>(list: T[]): T[] {
+  return list.slice().sort((a, b) =>
+    Number(statutOf(a) === 'traite') - Number(statutOf(b) === 'traite') ||
+    ORDRE_GRAVITE[a.gravite] - ORDRE_GRAVITE[b.gravite] ||
+    Date.parse(b.cree_le) - Date.parse(a.cree_le));
+}
 
 /** Repères ponctuels. */
 export const POINT_TYPES: Choice[] = [

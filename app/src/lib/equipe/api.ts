@@ -8,6 +8,7 @@ export const SB_KEY = 'sb_publishable_HYRXnCPVXNCEkGlf3WxQ1g_0BUyMCLe';
 
 export type Role = 'admin' | 'chef' | 'agent';
 export type Gravite = 'info' | 'a_traiter' | 'urgent';
+export type Statut = 'nouveau' | 'en_cours' | 'traite';
 
 export interface Compte {
   id: string;
@@ -83,6 +84,13 @@ export interface Signalement {
   gravite: Gravite;
   commentaire: string | null;
   photos: string[];
+  /** Suivi : nouveau, en cours, traité. */
+  statut: Statut;
+  /** Personne à qui le chef l'a confié. */
+  assigne_id: string | null;
+  assigne_nom: string | null;
+  statut_le: string | null;
+  statut_par: string | null;
 }
 
 export interface Repere {
@@ -210,6 +218,9 @@ export const api = {
   etat: (code: string, chantier: string) => rpc<Etat>('rr_etat', { p_code: code, p_chantier: chantier }),
   signaler: (code: string, chantier: string, p: Record<string, unknown>) =>
     rpc<null>('rr_signaler', { p_code: code, p_chantier: chantier, p }),
+  /** Statut et/ou personne désignée : { id, statut? , assigne? } (assigne vide = personne). */
+  signalementSuivi: (code: string, chantier: string, p: Record<string, unknown>) =>
+    rpc<null>('rr_signalement_suivi', { p_code: code, p_chantier: chantier, p }),
   repere: (code: string, chantier: string, p: Record<string, unknown>) =>
     rpc<null>('rr_repere', { p_code: code, p_chantier: chantier, p }),
   reperesImport: (code: string, chantier: string, items: Record<string, unknown>[]) =>

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/equipe/api';
-import { choice, GRAVITES, NATURES, repereChoices } from '../../lib/equipe/catalog';
+import { choice, GRAVITES, NATURES, repereChoices, statutOf } from '../../lib/equipe/catalog';
+import { StatutBadge } from '../app/ui';
 import { fmtDateHeure } from '../../lib/equipe/exports';
 import type { Equipe } from '../../lib/equipe/useEquipe';
 import { fmtLine, fmtPk } from '../../lib/format';
 import { NavLinks } from '../TargetSheet';
 
 /** Fiche d'un signalement ou d'un repère du chantier (touché sur la carte ou dans une liste). */
-export function TeamCard({ eq, id, onClose }: { eq: Equipe; id: string; onClose: () => void }) {
+export function TeamCard({ eq, id, onClose, onOpenSig }: { eq: Equipe; id: string; onClose: () => void; onOpenSig?: (id: string) => void }) {
   const sig = eq.view.signalements.find((s) => s.id === id);
   const rep = eq.view.reperes.find((r) => r.id === id);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -46,6 +47,7 @@ export function TeamCard({ eq, id, onClose }: { eq: Equipe; id: string; onClose:
             </div>
             <div className="card-title">{choice(NATURES, sig.nature).label}</div>
           </div>
+          <StatutBadge statut={statutOf(sig)} />
           <button className="icon-btn" onClick={onClose} aria-label="Fermer">×</button>
         </div>
         <div className="card-scroll">
@@ -54,6 +56,12 @@ export function TeamCard({ eq, id, onClose }: { eq: Equipe; id: string; onClose:
             {sig.ligne && <> · L{fmtLine(sig.ligne)} PK {fmtPk(sig.pk ?? 0)}</>}
             {sig.voie && ` · voie ${sig.voie}`}
           </p>
+          {sig.assigne_nom && <p className="small">Confié à <b>{sig.assigne_nom}</b></p>}
+          {onOpenSig && (
+            <button className="btn primary wide" onClick={() => onOpenSig(sig.id)}>
+              Ouvrir la fiche (statut, confier)
+            </button>
+          )}
           {sig.commentaire && <p className="comment">{sig.commentaire}</p>}
           {sig.photos.length > 0 && (
             <div className="photo-row">

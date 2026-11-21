@@ -66,8 +66,10 @@ interface Props {
 function viewPadding(m: MapLibreMap) {
   const el = m.getContainer();
   const wide = el.clientWidth >= 900;
+  // Ordinateur : panneau de repérage à gauche, pages de l'espace chantier à droite.
+  const pageOpen = !!document.querySelector('.app.page-open');
   return wide
-    ? { top: 70, bottom: 20, left: 460, right: 20 }
+    ? { top: 70, bottom: 20, left: 460, right: pageOpen ? 500 : 20 }
     : { top: 70, bottom: Math.round(el.clientHeight * 0.45), left: 0, right: 0 };
 }
 

@@ -1,6 +1,6 @@
 import { fmtLine, fmtPk } from '../format';
 import type { Chantier, Rapport, Repere, Signalement } from './api';
-import { choice, GRAVITES, NATURES, PANNEAU_TYPES } from './catalog';
+import { choice, GRAVITES, NATURES, STATUTS, PANNEAU_TYPES } from './catalog';
 
 export const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR');
 export const fmtHeure = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -35,9 +35,10 @@ const csvCell = (v: unknown) => {
 
 /** Signalements au format CSV pour Excel (séparateur « ; », accents conservés). */
 export function signalementsCsv(chantier: Chantier, list: Signalement[]): Blob {
-  const head = ['Date', 'Heure', 'Auteur', 'Nature', 'Gravité', 'Ligne', 'PK', 'Voie', 'Commentaire', 'Photos', 'Latitude', 'Longitude', 'Précision GPS (m)'];
+  const head = ['Date', 'Heure', 'Auteur', 'Nature', 'Gravité', 'Statut', 'Confié à', 'Ligne', 'PK', 'Voie', 'Commentaire', 'Photos', 'Latitude', 'Longitude', 'Précision GPS (m)'];
   const rows = list.map((s) => [
     fmtDate(s.cree_le), fmtHeure(s.cree_le), s.auteur_nom, choice(NATURES, s.nature).label, choice(GRAVITES, s.gravite).label,
+    choice(STATUTS, s.statut ?? 'nouveau').label, s.assigne_nom ?? '',
     s.ligne ?? '', s.pk !== null ? fmtPk(s.pk) : '', s.voie ?? '', s.commentaire ?? '', s.photos.length,
     s.lat.toFixed(6), s.lon.toFixed(6), s.precision_m ?? '',
   ]);

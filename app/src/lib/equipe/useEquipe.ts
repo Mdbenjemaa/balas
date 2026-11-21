@@ -73,7 +73,8 @@ export function useEquipe(): Equipe {
       }
       let chantierId = s.chantierId;
       if (chantierId && !cx.chantiers.some((c) => c.id === chantierId)) chantierId = null;
-      if (!chantierId && cx.chantiers.length === 1 && cx.compte.role === 'agent') chantierId = cx.chantiers[0].id;
+      const actifs = cx.chantiers.filter((c) => !c.archive);
+      if (!chantierId && actifs.length === 1 && cx.compte.role !== 'admin') chantierId = actifs[0].id;
       const next: Session = { ...s, compte: cx.compte, chantiers: cx.chantiers, chantierId };
       if (sessionRef.current?.code !== s.code) return;
       update(next);
@@ -139,7 +140,9 @@ export function useEquipe(): Equipe {
     async connecter(code) {
       const c = normCode(code);
       const cx = await api.connexion(c);
-      const only = cx.compte.role === 'agent' && cx.chantiers.length === 1 ? cx.chantiers[0].id : null;
+      // Un seul chantier en cours : il s'ouvre tout seul.
+      const actifs = cx.chantiers.filter((c) => !c.archive);
+      const only = cx.compte.role !== 'admin' && actifs.length === 1 ? actifs[0].id : null;
       setEtat(null);
       update({ code: c, compte: cx.compte, chantiers: cx.chantiers, chantierId: only });
       setSync({ busy: false, offline: false, error: null, last: Date.now() });

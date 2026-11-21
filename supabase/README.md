@@ -39,3 +39,10 @@ Récupère le KML complet d'une carte Google My Maps à partir de son identifian
 les KMZ exportés avec « Conserver les données à jour avec un lien réseau KML » ne contiennent qu'un lien, et le
 navigateur ne peut pas lire Google directement. Elle ne relaie que `www.google.com/maps/d/kml` (pas d'autre site).
 La carte doit être partagée « Tous les utilisateurs disposant du lien ». Déployée avec `verify_jwt = false`.
+
+## Suivi des signalements
+
+Migration `20261121140000_signalements_suivi` : colonnes `statut` (nouveau, en_cours, traite), `assigne_id`, `statut_le`,
+`statut_par` sur `signalements`, et fonction `rr_signalement_suivi(code, chantier, {id, statut?, assigne?})`.
+Confier (`assigne`) : chef du chantier ou administrateur, à un membre actif du chantier (un signalement « nouveau » passe
+« en cours »). Statut : le chef, ou l'agent désigné. `rr_etat` renvoie aussi `assigne_nom`.

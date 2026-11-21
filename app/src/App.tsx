@@ -17,7 +17,14 @@ import { cellsAround, matchInCells, pickFollowLine, pickLine, searchRadius, type
 import { loadPref, meFeatures, savePref } from './lib/me';
 import { MapView, railSource, type FocusRequest } from './map/MapView';
 import { PREVIEW } from './lib/env';
-import { EspaceSheet } from './components/equipe/EspaceSheet';
+import { LoginScreen } from './components/app/LoginScreen';
+import { TabBar, tabsFor, type Tab } from './components/app/TabBar';
+import { HomePage } from './components/app/Home';
+import { SignalementsPage, type SigIntent } from './components/app/Signalements';
+import { EquipePage } from './components/app/Equipe';
+import { ChefsPage, CorrectionsPage } from './components/app/Admin';
+import { normCode } from './lib/equipe/api';
+import { statutOf } from './lib/equipe/catalog';
 import { RepereForm, SignalForm } from './components/equipe/Forms';
 import { RapportForm } from './components/equipe/RapportForm';
 import { TeamCard } from './components/equipe/TeamCard';
@@ -32,7 +39,7 @@ import { envoyerEnAttente, onCorrections, refreshCorrections } from './lib/corre
 import { correctedPkMarks } from './lib/pkmarks';
 import type { Basemap } from './map/style';
 
-type Panel = 'none' | 'filters' | 'offline' | 'info' | 'chantier' | 'signal' | 'repere' | 'rapport' | 'correction';
+type Panel = 'none' | 'filters' | 'offline' | 'info' | 'signal' | 'repere' | 'rapport' | 'correction';
 const TEAM_LAYERS = new Set(['u-sig', 'u-rep', 'u-zone']);
 
 export default function App() {
@@ -61,6 +68,17 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eq = useEquipe();
+  // Écran de connexion au démarrage (sauf compte déjà connecté) ; lien reçu par SMS : « …#code=XXXX ».
+  const [entered, setEntered] = useState(PREVIEW);
+  const [linkCode, setLinkCode] = useState<string | null>(() => {
+    const m = /[#&]code=([A-Za-z0-9-]{8,16})/.exec(location.hash);
+    return m ? normCode(m[1]) : null;
+  });
+  useEffect(() => {
+    if (location.hash.includes('code=')) history.replaceState(null, '', location.pathname + location.search);
+  }, []);
+  const [tab, setTab] = useState<Tab>('accueil');
+  const [intent, setIntent] = useState<{ data: SigIntent | { ajout?: boolean }; n: number } | null>(null);
   const [teamFC, setTeamFC] = useState<FeatureCollection | null>(null);
   const [teamPick, setTeamPick] = useState<string | null>(null);
   const [rapport, setRapport] = useState<RapportResume | null>(null);
@@ -308,9 +326,18 @@ export default function App() {
   /** Sur ordinateur, le panneau du chantier reste ouvert à côté de la carte. */
   const wide = () => window.matchMedia('(min-width: 900px)').matches;
 
+  /** Change d'onglet ; « intent » prépare la page (filtre, ajout, fiche à ouvrir). */
+  const go = (t: Tab, data?: SigIntent | { ajout?: boolean }) => {
+    setTab(t);
+    setIntent(data ? { data, n: Date.now() } : null);
+    setPicked(null);
+    if (t !== 'carte') setTeamPick(null);
+  };
+
   /** Ouvre la fiche d'un signalement ou d'un repère et centre la carte dessus. */
   const openTeamItem = async (id: string, at: LonLat | null) => {
-    if (!wide()) setPanel('none');
+    setPanel('none');
+    if (!wide()) setTab('carte');
     setPicked(null);
     setTeamPick(id);
     if (at) return focusOn(at, 16);
@@ -328,7 +355,7 @@ export default function App() {
 
   const openSignal = () => {
     setPicked(null);
-    if (!eq.session?.chantierId) return setPanel('chantier');
+    if (!eq.session?.chantierId) return go('accueil');
     setPanel('signal');
     if (loc.phase !== 'result') locate();
   };
@@ -341,7 +368,10 @@ export default function App() {
       const doc = await loadLine(c.ligne);
       const mid = positionsAtPk(doc, (c.pk_debut + (c.pk_fin ?? c.pk_debut)) / 2)[0];
       if (!mid) return showToast('PK du chantier introuvables sur la ligne.');
-      if (!keepPanel && !wide()) setPanel('none');
+      if (!keepPanel && !wide()) {
+        setPanel('none');
+        setTab('carte');
+      }
       focusOn(mid.lonlat, Math.abs((c.pk_fin ?? c.pk_debut) - c.pk_debut) > 3 ? 12 : 14);
     } catch {
       showToast('Ligne indisponible pour le moment (pas de réseau ?).');
@@ -405,8 +435,79 @@ export default function App() {
     focusOn([lon, lat], 11);
   };
 
+  const acknowledge = () => {
+    savePref('rr-ack-v1', true);
+    setAck(true);
+  };
+  const role = eq.session?.compte.role ?? null;
+  const showLogin = !PREVIEW && ((!eq.session && !entered) || (!!linkCode && eq.session?.code !== linkCode));
+  const tabs = !!role && !showLogin;
+  // Onglet inconnu pour ce rôle (changement de compte) : retour à l'accueil.
+  const curTab: Tab = role && tabsFor(role).includes(tab) ? tab : 'accueil';
+  const moiId = eq.etat?.moi.id;
+  const badges = {
+    signalements: eq.etat?.gere
+      ? eq.view.signalements.filter((x) => statutOf(x) === 'nouveau').length
+      : eq.view.signalements.filter((x) => x.assigne_id === moiId && statutOf(x) !== 'traite').length,
+  };
+  const pageKey = `${curTab}-${intent?.n ?? 0}`;
+  const currentLine = loc.phase === 'result' && loc.chosen ? { code: loc.chosen.code, pk: loc.chosen.pk } : null;
+  const pages =
+    tabs && curTab !== 'carte' ? (
+      <div className="pages">
+        {curTab === 'accueil' && (
+          <HomePage
+            key={pageKey}
+            eq={eq}
+            currentLine={currentLine}
+            onGo={go}
+            onSignal={openSignal}
+            onRepere={() => setPanel('repere')}
+            onRapport={(r) => {
+              setRapport(r);
+              setPanel('rapport');
+            }}
+            onShowChantier={() => void showChantier()}
+            onLocate={() => {
+              go('carte');
+              locate();
+            }}
+            onOpenItem={(id, at) => void openTeamItem(id, at)}
+            onLogout={() => {
+              const warn = eq.pending.length ? `\n${eq.pending.length} envoi(s) en attente seront perdus.` : '';
+              if (window.confirm(`Se déconnecter de ce téléphone ?${warn}`)) {
+                eq.deconnecter();
+                setEntered(false);
+                setTab('accueil');
+              }
+            }}
+          />
+        )}
+        {curTab === 'signalements' && (
+          <SignalementsPage
+            key={pageKey}
+            eq={eq}
+            intent={(intent?.data as SigIntent) ?? null}
+            onSignal={openSignal}
+            onMap={(id, at) => void openTeamItem(id, at)}
+          />
+        )}
+        {curTab === 'equipe' && <EquipePage key={pageKey} eq={eq} intent={(intent?.data as { ajout?: boolean }) ?? null} />}
+        {curTab === 'chefs' && <ChefsPage key={pageKey} eq={eq} intent={(intent?.data as { ajout?: boolean }) ?? null} />}
+        {curTab === 'corrections' && (
+          <CorrectionsPage
+            eq={eq}
+            onFocusAt={(at) => {
+              if (!wide()) setTab('carte');
+              focusOn(at, 17);
+            }}
+          />
+        )}
+      </div>
+    ) : null;
+
   return (
-    <div className="app">
+    <div className={`app ${tabs ? 'with-tabs' : ''} ${tabs && curTab !== 'carte' ? 'page-open' : ''}`}>
       <MapView
         key={mapKey}
         basemap={basemap}
@@ -451,8 +552,8 @@ export default function App() {
             <path d="M12 3v11m0 0 4.5-4.5M12 14 7.5 9.5M4 17v3h16v-3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
           </svg>
         </button>}
-        {!PREVIEW && (
-          <button className={`icon-btn raised team-btn ${eq.session ? 'on' : ''}`} onClick={() => setPanel('chantier')} aria-label="Espace chantier">
+        {!PREVIEW && !eq.session && (
+          <button className="icon-btn raised team-btn" onClick={() => setEntered(false)} aria-label="Se connecter">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
               <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 0a3 3 0 1 0 0-6M2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1m1-7a5 5 0 0 1 5 5v2" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
             </svg>
@@ -483,7 +584,14 @@ export default function App() {
         </button>
       </div>
 
-      {teamPick && <TeamCard eq={eq} id={teamPick} onClose={() => setTeamPick(null)} />}
+      {teamPick && (
+        <TeamCard
+          eq={eq}
+          id={teamPick}
+          onClose={() => setTeamPick(null)}
+          onOpenSig={eq.session ? (id) => go('signalements', { open: id }) : undefined}
+        />
+      )}
 
       {picked && loc.phase !== 'acquiring' && (
         <FeatureCard feature={picked.f} at={picked.at} manifest={manifest} onPlaceHere={placeHere} onClose={() => setPicked(null)} />
@@ -564,25 +672,6 @@ export default function App() {
         />
       )}
       {panel === 'info' && <InfoSheet manifest={manifest} onClose={() => setPanel('none')} />}
-      {panel === 'chantier' && (
-        <EspaceSheet
-          eq={eq}
-          onFocusAt={(at) => {
-            if (!wide()) setPanel('none');
-            focusOn(at, 17);
-          }}
-          currentLine={loc.phase === 'result' && loc.chosen ? { code: loc.chosen.code, pk: loc.chosen.pk } : null}
-          onOpenItem={(id, at) => void openTeamItem(id, at)}
-          onShowChantier={() => void showChantier()}
-          onNewSignal={openSignal}
-          onNewRepere={() => setPanel('repere')}
-          onRapport={(r) => {
-            setRapport(r);
-            setPanel('rapport');
-          }}
-          onClose={() => setPanel('none')}
-        />
-      )}
       {panel === 'correction' && corrTarget && (
         <CorrectionForm
           target={corrTarget}
@@ -608,9 +697,28 @@ export default function App() {
           onClose={() => setPanel('none')}
         />
       )}
-      {panel === 'rapport' && eq.etat && <RapportForm eq={eq} existing={rapport} onClose={() => setPanel('chantier')} />}
-      {ack && !PREVIEW && panel === 'none' && <InstallBanner />}
-      {!ack && (
+      {panel === 'rapport' && eq.etat && <RapportForm eq={eq} existing={rapport} onClose={() => setPanel('none')} />}
+      {pages}
+      {tabs && <TabBar role={role!} tab={curTab} onTab={(t) => go(t)} badges={badges} />}
+      {ack && !PREVIEW && panel === 'none' && !showLogin && (!eq.session || tab === 'carte') && <InstallBanner />}
+      {showLogin && (
+        <LoginScreen
+          eq={eq}
+          linkCode={linkCode}
+          onSkip={() => {
+            acknowledge();
+            setLinkCode(null);
+            setEntered(true);
+          }}
+          onConnected={() => {
+            acknowledge();
+            setLinkCode(null);
+            setEntered(true);
+            go('accueil');
+          }}
+        />
+      )}
+      {PREVIEW && !ack && (
         <Disclaimer
           onAccept={() => {
             savePref('rr-ack-v1', true);

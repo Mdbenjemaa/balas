@@ -46,6 +46,7 @@ interface OutBase {
 export type OutItem =
   | (OutBase & { kind: 'signalement'; payload: Record<string, unknown>; photos: Blob[] })
   | (OutBase & { kind: 'repere'; payload: Record<string, unknown> })
+  | (OutBase & { kind: 'suivi'; payload: { id: string; statut?: string; assigne?: string; assigne_nom?: string | null } })
   | (OutBase & { kind: 'rapport'; payload: Record<string, unknown> });
 
 type DistOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -98,6 +99,10 @@ export async function flushOutbox(code: string): Promise<{ items: OutItem[]; off
         await api.signaler(code, item.chantier, p);
       } else if (item.kind === 'repere') {
         await api.repere(code, item.chantier, item.payload);
+      } else if (item.kind === 'suivi') {
+        const { assigne_nom: _nom, ...p } = item.payload;
+        void _nom;
+        await api.signalementSuivi(code, item.chantier, p);
       } else {
         await api.rapport(code, item.chantier, item.payload);
       }
@@ -133,8 +138,26 @@ export function mergePending(etat: Etat | null, all: OutItem[]): View {
         lon: Number(p.lon), lat: Number(p.lat), precision_m: (p.precision_m as number) ?? null,
         ligne: (p.ligne as string) ?? null, pk: (p.pk as number) ?? null, voie: (p.voie as string) ?? null,
         nature: String(p.nature), gravite: p.gravite as Signalement['gravite'], commentaire: (p.commentaire as string) ?? null,
-        photos: [], pending: true,
+        photos: [], pending: true, statut: 'nouveau', assigne_id: null, assigne_nom: null, statut_le: null, statut_par: null,
       });
+    }
+    if (it.kind === 'suivi') {
+      const p = it.payload;
+      const i = signalements.findIndex((s) => s.id === p.id);
+      if (i >= 0) {
+        const s = { ...signalements[i], pending: true };
+        if (p.assigne !== undefined) {
+          s.assigne_id = p.assigne || null;
+          s.assigne_nom = p.assigne ? (p.assigne_nom ?? null) : null;
+          if (p.assigne && s.statut === 'nouveau') s.statut = 'en_cours';
+        }
+        if (p.statut) {
+          s.statut = p.statut as Signalement['statut'];
+          s.statut_par = moi?.nom ?? null;
+          s.statut_le = new Date().toISOString();
+        }
+        signalements[i] = s;
+      }
     }
     if (it.kind === 'repere') {
       const p = it.payload as Record<string, unknown>;
