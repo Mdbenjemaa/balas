@@ -53,16 +53,29 @@ interface Props {
   team: FeatureCollection | null;
   pkfix: Overlays['pkfix'];
   focus: FocusRequest | null;
+  /** Suivi : position à garder visible (la carte ne bouge que si le point va sortir de l'écran). */
+  keepInView?: LonLat | null;
+  /** L'utilisateur a déplacé ou zoomé la carte lui-même. */
+  onUserMove?: () => void;
   onFeature: (f: MapGeoJSONFeature, at: LonLat) => void;
   onLongPress: (at: LonLat) => void;
   onMapTap: () => void;
 }
 
-export function MapView({ basemap, filters, me, target, acces, team, pkfix, focus, onFeature, onLongPress, onMapTap }: Props) {
+/** Marges de la zone visible : le panneau du bas (téléphone) ou de gauche (ordinateur) cache une partie de la carte. */
+function viewPadding(m: MapLibreMap) {
+  const el = m.getContainer();
+  const wide = el.clientWidth >= 900;
+  return wide
+    ? { top: 70, bottom: 20, left: 460, right: 20 }
+    : { top: 70, bottom: Math.round(el.clientHeight * 0.45), left: 0, right: 0 };
+}
+
+export function MapView({ basemap, filters, me, target, acces, team, pkfix, focus, keepInView, onUserMove, onFeature, onLongPress, onMapTap }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
-  const latest = useRef({ filters, me, target, acces, team, pkfix, onFeature, onLongPress, onMapTap });
-  latest.current = { filters, me, target, acces, team, pkfix, onFeature, onLongPress, onMapTap };
+  const latest = useRef({ filters, me, target, acces, team, pkfix, onFeature, onLongPress, onMapTap, onUserMove });
+  latest.current = { filters, me, target, acces, team, pkfix, onFeature, onLongPress, onMapTap, onUserMove };
   const overlays = (): Overlays => ({ me: latest.current.me, target: latest.current.target, acces: latest.current.acces, team: latest.current.team, pkfix: latest.current.pkfix });
   const syncOverlays = (m: MapLibreMap) => {
     const o = overlays();
@@ -126,6 +139,12 @@ export function MapView({ basemap, filters, me, target, acces, team, pkfix, focu
       created.on('movestart', (e) => {
         if ((e as { originalEvent?: Event }).originalEvent) cancel();
       });
+      // Geste de l'utilisateur (glisser, pincer, molette) : la carte devient libre pendant le suivi.
+      const userGesture = (e: { originalEvent?: Event }) => {
+        if (e.originalEvent) latest.current.onUserMove?.();
+      };
+      created.on('dragstart', userGesture);
+      created.on('zoomstart', userGesture);
       created.on('contextmenu', (e) => latest.current.onLongPress([e.lngLat.lng, e.lngLat.lat]));
     })();
     return () => {
@@ -189,11 +208,27 @@ export function MapView({ basemap, filters, me, target, acces, team, pkfix, focu
         center: focus.center,
         zoom: focus.zoom ?? Math.max(map.current.getZoom(), 16),
         duration: 1200,
-        padding: { top: 70, bottom: Math.round(window.innerHeight * 0.45), left: 0, right: 0 },
+        padding: viewPadding(map.current),
       });
     if (map.current) go();
     else setTimeout(go, 800);
   }, [focus]);
+
+  // Suivi : la carte reste où elle est tant que le point est bien visible, sinon elle le ramène au centre.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !keepInView) return;
+    const pad = viewPadding(m);
+    const el = m.getContainer();
+    const pt = m.project(keepInView);
+    const margin = 40;
+    const inside =
+      pt.x >= pad.left + margin &&
+      pt.x <= el.clientWidth - pad.right - margin &&
+      pt.y >= pad.top + margin &&
+      pt.y <= el.clientHeight - pad.bottom - margin;
+    if (!inside) m.easeTo({ center: keepInView, padding: pad, duration: 700 });
+  }, [keepInView]);
 
   return <div ref={container} className="map" />;
 }

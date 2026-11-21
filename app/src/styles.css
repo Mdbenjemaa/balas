@@ -261,3 +261,11 @@ textarea.text { resize: vertical; min-height: 64px; }
 .install-steps { margin: 6px 0; padding-left: 22px; font-size: 15px; line-height: 1.5; }
 .share-ico { vertical-align: -4px; color: #007aff; }
 @media (min-width: 900px) { .install-banner { right: auto; width: 420px; } }
+
+/* Suivi PK en direct */
+.follow-row { display: flex; gap: 8px; justify-content: flex-end; margin: 4px 0 6px; }
+.follow-row .btn { flex: 1; margin-top: 0; }
+.btn-stop { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.pk-live { font-size: 46px; letter-spacing: 0; }
+.live-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #16a34a; margin-right: 4px; vertical-align: 1px; animation: live-pulse 1.4s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: 0.25; } }

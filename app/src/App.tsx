@@ -10,8 +10,10 @@ import { parsePk, pkRange, positionsAtPk } from './lib/pk';
 import { dataUpdate, loadCell, loadLine, loadManifest, type Manifest } from './lib/data';
 import type { LonLat } from './lib/geo';
 import { acquire, follow, geoErrorMessage, type Acquisition, type Fix } from './lib/gps';
+import { PkFilter, type PkEstimate } from './lib/pkfilter';
+import { keepScreenOn, type AwakeStatus } from './lib/wakelock';
 import { DEFAULT_FILTERS, type FilterKey, type Filters } from './lib/layers';
-import { cellsAround, matchInCells, pickLine, searchRadius } from './lib/locate';
+import { cellsAround, matchInCells, pickFollowLine, pickLine, searchRadius, type LineCandidate } from './lib/locate';
 import { loadPref, meFeatures, savePref } from './lib/me';
 import { MapView, railSource, type FocusRequest } from './map/MapView';
 import { PREVIEW } from './lib/env';
@@ -44,6 +46,10 @@ export default function App() {
   const [loc, setLoc] = useState<LocateState>({ phase: 'idle' });
   const [expanded, setExpanded] = useState(false);
   const [following, setFollowing] = useState(false);
+  const [followPk, setFollowPk] = useState<PkEstimate | null>(null);
+  const [followAt, setFollowAt] = useState<LonLat | null>(null);
+  const [mapFree, setMapFree] = useState(false);
+  const [awake, setAwake] = useState<AwakeStatus | null>(null);
   const [me, setMe] = useState<FeatureCollection | null>(null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [picked, setPicked] = useState<{ f: MapGeoJSONFeature; at: LonLat } | null>(null);
@@ -94,6 +100,10 @@ export default function App() {
   const acquisition = useRef<Acquisition | null>(null);
   const stopFollow = useRef<(() => void) | null>(null);
   const busy = useRef(false);
+  const pendingFix = useRef<Fix | null>(null);
+  const pkFilter = useRef(new PkFilter());
+  const followLine = useRef<string | null>(null);
+  const releaseAwake = useRef<(() => void) | null>(null);
   const lastFix = useRef<{ fix: Fix; mode: 'gps' | 'manuel' | 'suivi'; forced?: string } | null>(null);
 
   useEffect(() => {
@@ -116,7 +126,7 @@ export default function App() {
 
   /** Rattache une position aux lignes proches et prépare l'affichage. */
   const analyse = useCallback(
-    async (fix: Fix, mode: 'gps' | 'manuel' | 'suivi', forcedCode?: string, recenter = true) => {
+    async (fix: Fix, mode: 'gps' | 'manuel' | 'suivi', forcedCode?: string, recenter = true, prefer?: string | null): Promise<LineCandidate | null> => {
       const m = manifest ?? (await loadManifest());
       lastFix.current = { fix, mode, forced: forcedCode };
       const radius = searchRadius(fix.accuracy, declared);
@@ -125,11 +135,14 @@ export default function App() {
         await Promise.all(cellsAround(fix.lonlat, radius, m.cellsPerDegree).map((k) => loadCell(k, known)))
       ).filter((c) => c !== null);
       const match = matchInCells(cells, fix.lonlat, radius);
-      const chosen = (forcedCode && match.lines.find((l) => l.code === forcedCode)) || pickLine(match.lines, declared);
+      const chosen =
+        (forcedCode && match.lines.find((l) => l.code === forcedCode)) ||
+        (mode === 'suivi' ? pickFollowLine(match.lines, prefer, declared, fix.accuracy) : pickLine(match.lines, declared));
       const doc = chosen ? await loadLine(chosen.code).catch(() => null) : null;
       setLoc({ phase: 'result', fix, mode, radius, match, chosen: chosen ?? null, doc });
       setMe(meFeatures(fix.lonlat, fix.accuracy, chosen?.point ?? null));
       if (recenter) focusOn(fix.lonlat, mode === 'suivi' ? undefined : 17);
+      return chosen ?? null;
     },
     [manifest, declared, focusOn],
   );
@@ -172,31 +185,75 @@ export default function App() {
       });
   };
 
+  const analyseRef = useRef(analyse);
+  analyseRef.current = analyse;
+
   const stopFollowing = () => {
     stopFollow.current?.();
     stopFollow.current = null;
+    pendingFix.current = null;
+    releaseAwake.current?.();
+    releaseAwake.current = null;
+    followLine.current = null;
     setFollowing(false);
+    setFollowPk(null);
+    setFollowAt(null);
+    setMapFree(false);
+    setAwake(null);
   };
 
-  const toggleFollow = () => {
-    if (following) return stopFollowing();
+  /**
+   * Suivi en direct : chaque position GPS est rattachée à la ligne en cours, le PK est lissé
+   * puis affiché au mètre. La carte reste libre ; elle ne bouge que si le point va sortir de l'écran.
+   */
+  const startFollowing = () => {
     if (!('geolocation' in navigator)) return;
+    stopFollowing();
     setFollowing(true);
-    stopFollow.current = follow(
-      async (fix) => {
-        if (busy.current) return;
-        busy.current = true;
-        try {
-          await analyse(fix, 'suivi', lastFix.current?.forced, true);
-        } finally {
-          busy.current = false;
+    setExpanded(false);
+    pkFilter.current.reset();
+    followLine.current = loc.phase === 'result' ? (loc.chosen?.code ?? null) : null;
+    if (lastFix.current) focusOn(lastFix.current.fix.lonlat);
+    releaseAwake.current = keepScreenOn(setAwake);
+    // Les positions arrivent plus vite que le calcul parfois : on traite toujours la plus récente.
+    const run = async () => {
+      if (busy.current) return;
+      busy.current = true;
+      try {
+        while (pendingFix.current && stopFollow.current) {
+          const fix = pendingFix.current;
+          pendingFix.current = null;
+          const chosen = await analyseRef.current(fix, 'suivi', lastFix.current?.forced, false, followLine.current);
+          if (!stopFollow.current) break;
+          followLine.current = chosen?.code ?? null;
+          setFollowPk(chosen ? pkFilter.current.update(chosen.code, chosen.pk, fix.accuracy, fix.time) : null);
+          setFollowAt(fix.lonlat);
         }
+      } finally {
+        busy.current = false;
+      }
+    };
+    stopFollow.current = follow(
+      (fix) => {
+        pendingFix.current = fix;
+        void run();
       },
       (e) => {
-        setLoc({ phase: 'error', message: geoErrorMessage(e) });
-        stopFollowing();
+        // Tunnel, tranchée : le GPS se tait un moment, le suivi continue. Seul un refus l'arrête.
+        if (e.code === e.PERMISSION_DENIED) {
+          setLoc({ phase: 'error', message: geoErrorMessage(e) });
+          stopFollowing();
+        }
       },
     );
+  };
+
+  const toggleFollow = () => (following ? stopFollowing() : startFollowing());
+
+  const recenter = () => {
+    setMapFree(false);
+    const at = followAt ?? lastFix.current?.fix.lonlat;
+    if (at) focusOn(at);
   };
 
   const placeHere = (at: LonLat) => {
@@ -360,6 +417,10 @@ export default function App() {
         team={teamFC}
         pkfix={pkfix}
         focus={focus}
+        keepInView={following && !mapFree ? followAt : null}
+        onUserMove={() => {
+          if (stopFollow.current) setMapFree(true);
+        }}
         onFeature={(f, at) => {
           if (TEAM_LAYERS.has(f.layer.id) && f.properties?.id) {
             setPicked(null);
@@ -412,11 +473,6 @@ export default function App() {
 
       <div className="fab-zone">
         {PREVIEW && loc.phase === 'idle' && !picked && <div className="hint">Aperçu sans GPS : appui long sur la carte = me placer ici</div>}
-        {loc.phase === 'result' && loc.mode !== 'manuel' && (
-          <button className={`pill ${following ? 'on' : ''}`} onClick={toggleFollow}>
-            {following ? '● Suivi actif' : 'Suivre en marchant'}
-          </button>
-        )}
         {inChantier && (
           <button className="fab fab-signal" onClick={openSignal}>
             ⚠ Signaler
@@ -456,6 +512,11 @@ export default function App() {
         declared={declared}
         expanded={expanded}
         following={following}
+        followPk={followPk}
+        awake={awake}
+        mapFree={mapFree}
+        onToggleFollow={PREVIEW ? undefined : toggleFollow}
+        onRecenter={recenter}
         onToggleExpand={() => setExpanded((e) => !e)}
         onDeclared={setDeclared}
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}

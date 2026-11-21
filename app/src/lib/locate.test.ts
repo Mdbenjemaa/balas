@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Cell, LineDoc } from './data';
 import { fmtDist, fmtLine, fmtPk } from './format';
 import { combine } from './gps';
-import { cellsAround, matchInCells, pickLine, searchRadius } from './locate';
+import { cellsAround, matchInCells, pickFollowLine, pickLine, searchRadius } from './locate';
 import { aroundPk, sectionAt } from './nearby';
 
 const DATA = 'public/data';
@@ -84,5 +84,18 @@ describe('éléments autour du PK (données réelles)', () => {
   it('donne la vitesse nominale au PK', () => {
     const doc = line('130000');
     expect(sectionAt(doc, 'vmax', 19.6)).toMatch(/^\d+$/);
+  });
+});
+
+describe('pickFollowLine', () => {
+  const cand = (code: string, dist: number) => ({ code, rg: '', statut: '', dist, pk: 1, pkRaw: 1, point: [0, 0] as [number, number], bearing: 0 });
+  it('reste sur la ligne suivie quand une autre ligne passe un peu plus près', () => {
+    expect(pickFollowLine([cand('B', 4), cand('A', 11)], 'A', null, 5)?.code).toBe('A');
+  });
+  it('change de ligne quand la ligne suivie s’éloigne nettement', () => {
+    expect(pickFollowLine([cand('B', 3), cand('A', 45)], 'A', null, 5)?.code).toBe('B');
+  });
+  it('prend la meilleure ligne quand la ligne suivie n’est plus proche', () => {
+    expect(pickFollowLine([cand('B', 3)], 'A', null, 5)?.code).toBe('B');
   });
 });

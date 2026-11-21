@@ -122,3 +122,20 @@ export function pickLine(lines: LineCandidate[], declared: number | null): LineC
   if (declared === null) return lines[0];
   return [...lines].sort((a, b) => Math.abs(a.dist - declared) - Math.abs(b.dist - declared) || a.dist - b.dist)[0];
 }
+
+/**
+ * Pendant le suivi : on reste sur la ligne en cours tant qu'elle reste plausible,
+ * pour ne pas sauter d'une ligne à l'autre aux bifurcations ou quand deux lignes se longent.
+ */
+export function pickFollowLine(
+  lines: LineCandidate[],
+  current: string | null | undefined,
+  declared: number | null,
+  accuracy: number,
+): LineCandidate | null {
+  const best = pickLine(lines, declared);
+  const cur = current ? lines.find((l) => l.code === current) : undefined;
+  if (!best || !cur || cur === best) return best;
+  const score = (l: LineCandidate) => (declared === null ? l.dist : Math.abs(l.dist - declared));
+  return score(cur) <= score(best) + Math.max(12, Math.min(accuracy, 40)) ? cur : best;
+}

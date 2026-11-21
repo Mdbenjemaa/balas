@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AccesSet } from '../lib/acces';
 import type { LineDoc, LinePoint, Manifest } from '../lib/data';
 import { fmtDist, fmtLine, fmtPk } from '../lib/format';
@@ -6,6 +6,9 @@ import type { Fix } from '../lib/gps';
 import { kindVisible, KIND_BADGE, type Filters } from '../lib/layers';
 import type { LineCandidate, Match } from '../lib/locate';
 import { aroundPk, sectionAt, statutAt, type AroundItem } from '../lib/nearby';
+import type { PkEstimate } from '../lib/pkfilter';
+import type { AwakeStatus } from '../lib/wakelock';
+import { PkCounter } from './PkCounter';
 
 export type LocateState =
   | { phase: 'idle' }
@@ -37,6 +40,13 @@ interface Props {
   declared: number | null;
   expanded: boolean;
   following: boolean;
+  /** PK lissé pendant le suivi. */
+  followPk?: PkEstimate | null;
+  awake?: AwakeStatus | null;
+  /** La carte a été déplacée à la main pendant le suivi. */
+  mapFree?: boolean;
+  onToggleFollow?: () => void;
+  onRecenter?: () => void;
   onToggleExpand: () => void;
   onDeclared: (d: number | null) => void;
   onChoose: (code: string) => void;
@@ -49,6 +59,46 @@ interface Props {
   onFocus: (at: [number, number]) => void;
   onStopAcquire: () => void;
   onClose: () => void;
+}
+
+/** Secondes écoulées depuis la dernière position, rafraîchies chaque seconde. */
+function useSince(time: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return Math.max(0, Math.round((now - time) / 1000));
+}
+
+/** En-tête du suivi en direct : gros compteur PK au mètre. */
+function FollowHead(p: {
+  code: string;
+  name: string | null;
+  pk: number;
+  est: PkEstimate | null;
+  fix: Fix;
+  awake: AwakeStatus | null;
+  onToggleExpand: () => void;
+}) {
+  const since = useSince(p.fix.time);
+  const dir = p.est?.dir === 1 ? '▲ PK croissants' : p.est?.dir === -1 ? '▼ PK décroissants' : null;
+  return (
+    <div className="pk-block follow-block" onClick={p.onToggleExpand}>
+      <div className="eyebrow">
+        <span className="live-dot" /> Ligne {fmtLine(p.code)} · suivi en direct
+      </div>
+      <PkCounter value={p.est?.pk ?? p.pk} />
+      <div className="muted">
+        {dir && <b>{dir} · </b>}
+        {p.name ?? 'Ligne sans nom'} · GPS ± {Math.round(p.fix.accuracy)} m
+      </div>
+      {since >= 8 && <div className="warn small">Signal GPS perdu depuis {since} s : le PK n’avance plus.</div>}
+      {p.awake && p.awake !== 'on' && (
+        <div className="muted small">L’écran peut se mettre en veille : désactive la mise en veille automatique pendant le suivi.</div>
+      )}
+    </div>
+  );
 }
 
 function Badge({ kind }: { kind: string }) {
@@ -193,7 +243,17 @@ export function LocatePanel(p: Props) {
     <section className={`sheet ${p.expanded ? 'sheet-full' : 'sheet-peek'}`} aria-live="polite">
       <button className="grab" onClick={p.onToggleExpand} aria-label={p.expanded ? 'Réduire' : 'Agrandir'} />
       <div className="sheet-head">
-        {chosen ? (
+        {chosen && p.following && mode === 'suivi' ? (
+          <FollowHead
+            code={chosen.code}
+            name={name ?? null}
+            pk={chosen.pk}
+            est={p.followPk ?? null}
+            fix={fix}
+            awake={p.awake ?? null}
+            onToggleExpand={p.onToggleExpand}
+          />
+        ) : chosen ? (
           <div className="pk-block" onClick={p.onToggleExpand}>
             <div className="eyebrow">
               Ligne {fmtLine(chosen.code)}
@@ -217,6 +277,27 @@ export function LocatePanel(p: Props) {
           ×
         </button>
       </div>
+
+      {chosen && mode !== 'manuel' && p.onToggleFollow && (
+        <div className="follow-row">
+          {p.following ? (
+            <>
+              {p.mapFree && (
+                <button className="btn btn-small" onClick={p.onRecenter}>
+                  ◎ Recentrer
+                </button>
+              )}
+              <button className="btn btn-small btn-stop" onClick={p.onToggleFollow}>
+                ■ Arrêter le suivi
+              </button>
+            </>
+          ) : (
+            <button className="btn primary wide" onClick={p.onToggleFollow}>
+              ▶ Suivre le PK en direct
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="sheet-body">
         {chosen && <PkForm onGo={(text) => p.onGoPk(chosen.code, text)} />}

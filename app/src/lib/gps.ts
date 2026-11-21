@@ -114,7 +114,7 @@ export function follow(onFix: (f: Fix) => void, onError: (e: GeolocationPosition
         time: pos.timestamp,
       }),
     onError,
-    { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
   );
   return () => navigator.geolocation.clearWatch(id);
 }
