@@ -269,3 +269,7 @@ textarea.text { resize: vertical; min-height: 64px; }
 .pk-live { font-size: 46px; letter-spacing: 0; }
 .live-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #16a34a; margin-right: 4px; vertical-align: 1px; animation: live-pulse 1.4s ease-in-out infinite; }
 @keyframes live-pulse { 50% { opacity: 0.25; } }
+
+/* Import par lien Google My Maps */
+.mymaps-form { display: flex; gap: 8px; margin-top: 8px; }
+.mymaps-form input { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 16px; }

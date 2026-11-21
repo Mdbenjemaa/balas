@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { readAccesFile, snapAcces } from '../../lib/acces';
+import { readAccesSource, snapAcces } from '../../lib/acces';
+import { MyMapsLink } from '../MyMapsLink';
 import { api, fmtCode, type AgentRow, type Chantier, type ChefRow, type RapportResume } from '../../lib/equipe/api';
 import { choice, FONCTIONS, GRAVITES, NATURES, repereChoices } from '../../lib/equipe/catalog';
 import { fmtDate, fmtDateHeure, shareFile, signalementsCsv } from '../../lib/equipe/exports';
@@ -421,11 +422,11 @@ function ChantierDashboard(p: {
   const errors = eq.pending.filter((i) => i.error && i.chantier === eq.session?.chantierId);
   const c = etat?.chantier ?? eq.session?.chantiers.find((x) => x.id === eq.session?.chantierId);
 
-  const importKml = async (file: File) => {
+  const importKml = async (src: File | string) => {
     const s = eq.session!;
     setImportMsg({ text: 'Import en cours…', busy: true });
     try {
-      const { points } = await readAccesFile(file);
+      const { points } = await readAccesSource(src);
       if (!points.length) throw new Error('Aucun point dans ce fichier.');
       const snapped = await snapAcces(points);
       let n = 0;
@@ -475,6 +476,7 @@ function ChantierDashboard(p: {
           <button className="btn" onClick={() => p.onRapport(null)}>Rapport de poste</button>
         </div>
       )}
+      {gere && <MyMapsLink busy={importMsg?.busy} onSubmit={(link) => void importKml(link)} />}
       {importMsg && <p className={importMsg.error ? 'error small' : importMsg.busy ? 'muted small' : 'ok small import-ok'}>{importMsg.text}</p>}
 
       {errors.length > 0 && (

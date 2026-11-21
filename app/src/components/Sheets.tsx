@@ -17,6 +17,7 @@ import { fmtLine, fmtPk } from '../lib/format';
 import { parsePk, parsePkQuery } from '../lib/pk';
 import { NavLinks } from './TargetSheet';
 import { InstallSteps } from './Install';
+import { MyMapsLink } from './MyMapsLink';
 import { installMode } from '../lib/install';
 import type { LonLat } from '../lib/geo';
 import { FILTERS, type FilterKey, type Filters } from '../lib/layers';
@@ -50,7 +51,7 @@ export interface ImportStatus {
 function AccesManager(p: {
   sets: AccesSet[];
   status: ImportStatus | null;
-  onImport: (f: File) => void;
+  onImport: (src: File | string) => void;
   onDelete: (id: string) => void;
   onShow: (set: AccesSet) => void;
 }) {
@@ -58,8 +59,8 @@ function AccesManager(p: {
     <div className="acces-box">
       <div className="field-label">Mes accès</div>
       <p className="muted small">
-        Importe une carte d’accès (Google My Maps : menu ⋮ › « Télécharger KML » ou « Exporter au format KML/KMZ »).
-        Chaque accès reçoit sa ligne et son PK. La carte reste uniquement sur ce téléphone.
+        Importe une carte d’accès : fichier KML ou KMZ (Google My Maps : menu ⋮ › « Télécharger KML »), ou directement
+        le lien de la carte Google My Maps. Chaque accès reçoit sa ligne et son PK. La carte reste uniquement sur ce téléphone.
       </p>
       <label className={`btn file-btn ${p.status?.busy ? 'disabled' : ''}`}>
         {p.status?.busy ? 'Import en cours…' : 'Importer un fichier KML ou KMZ'}
@@ -73,6 +74,7 @@ function AccesManager(p: {
           }}
         />
       </label>
+      <MyMapsLink busy={p.status?.busy} onSubmit={p.onImport} />
       {p.status && !p.status.busy && <p className={p.status.error ? 'error small' : 'ok small'}>{p.status.text}</p>}
       {p.sets.length > 0 && (
         <ul className="sets">
@@ -107,7 +109,7 @@ export function FilterSheet(p: {
   onBasemap: (b: Basemap) => void;
   acces: AccesSet[];
   importStatus: ImportStatus | null;
-  onImport: (f: File) => void;
+  onImport: (src: File | string) => void;
   onDeleteSet: (id: string) => void;
   onShowSet: (set: AccesSet) => void;
   onClose: () => void;

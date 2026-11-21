@@ -4,7 +4,7 @@ import type { MapGeoJSONFeature } from 'maplibre-gl';
 import { LocatePanel, type LocateState } from './components/LocatePanel';
 import { Disclaimer, FeatureCard, FilterSheet, InfoSheet, OfflineSheet, Search, type ImportStatus } from './components/Sheets';
 import { TargetSheet, type Origin, type TargetState } from './components/TargetSheet';
-import { accesFeatures, loadAcces, readAccesFile, saveAcces, snapAcces, type AccesSet } from './lib/acces';
+import { accesFeatures, loadAcces, readAccesSource, saveAcces, snapAcces, type AccesSet } from './lib/acces';
 import { fmtLine, fmtPk } from './lib/format';
 import { parsePk, pkRange, positionsAtPk } from './lib/pk';
 import { dataUpdate, loadCell, loadLine, loadManifest, type Manifest } from './lib/data';
@@ -372,13 +372,13 @@ export default function App() {
   }, [target]);
   const accesFC = useMemo(() => accesFeatures(acces), [acces]);
 
-  const importAcces = async (file: File) => {
+  const importAcces = async (src: File | string) => {
     setImportStatus({ busy: true, text: '' });
     try {
-      const { title, points } = await readAccesFile(file);
+      const { title, points } = await readAccesSource(src);
       if (!points.length) throw new Error('Aucun point trouvé dans ce fichier.');
       const items = await snapAcces(points);
-      const name = title || file.name.replace(/\.(kml|kmz|geojson|json)$/i, '');
+      const name = title || (typeof src === 'string' ? 'Carte Google My Maps' : src.name.replace(/\.(kml|kmz|geojson|json)$/i, ''));
       const next = [...acces, { id: String(Date.now()), name, imported: Date.now(), items }];
       if (!saveAcces(next)) throw new Error('Le téléphone a refusé l’enregistrement (stockage plein ?).');
       setAcces(next);
@@ -547,7 +547,7 @@ export default function App() {
           onBasemap={setBasemap}
           acces={acces}
           importStatus={importStatus}
-          onImport={(f) => void importAcces(f)}
+          onImport={(src) => void importAcces(src)}
           onDeleteSet={deleteSet}
           onShowSet={showSet}
           onClose={() => setPanel('none')}

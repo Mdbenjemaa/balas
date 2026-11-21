@@ -1,4 +1,8 @@
 import { unzipSync, strFromU8 } from 'fflate';
+import { SB_KEY, SB_URL } from './equipe/api';
+import { myMapsId } from './mymaps';
+
+export { myMapsId };
 import type { FeatureCollection } from 'geojson';
 import { loadCell, loadManifest } from './data';
 import type { LonLat } from './geo';
@@ -115,8 +119,54 @@ export function parseGeoJson(text: string): { title: string | null; points: RawP
   return { title: null, points };
 }
 
+const MYMAPS_ERR: Record<string, string> = {
+  privee:
+    'La carte Google My Maps n’est pas partagée. Dans My Maps : Partager › « Tous les utilisateurs disposant du lien peuvent afficher », puis recommence.',
+  introuvable: 'Carte Google My Maps introuvable : le lien est incorrect ou la carte a été supprimée.',
+  trop_gros: 'Cette carte Google My Maps est trop grosse pour être importée.',
+};
+
+/** Va chercher le KML complet d'une carte Google My Maps (par le serveur de l'appli : le navigateur ne peut pas lire Google). */
+export async function fetchMyMaps(mid: string): Promise<string> {
+  const offline = 'Pas de réseau : il en faut pour aller chercher les points sur Google My Maps. Réessaie quand tu as du réseau.';
+  if (!navigator.onLine) throw new Error(offline);
+  const res = await fetch(`${SB_URL}/functions/v1/mymaps`, {
+    method: 'POST',
+    headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mid }),
+  }).catch(() => null);
+  if (!res) throw new Error(offline);
+  const d = (await res.json().catch(() => ({}))) as { kml?: string; error?: string };
+  if (d.kml) return d.kml;
+  throw new Error(MYMAPS_ERR[d.error ?? ''] ?? 'Google My Maps n’a pas répondu. Réessaie dans un moment.');
+}
+
+type Parsed = { title: string | null; points: RawPoint[] };
+
+/**
+ * KML : si le fichier ne contient qu'un « lien réseau » vers la carte (export My Maps avec
+ * « Conserver les données à jour »), on va chercher les points au bout du lien.
+ */
+async function fromKml(text: string): Promise<Parsed> {
+  const parsed = parseKml(text);
+  if (parsed.points.length || !/<NetworkLink[\s>]/i.test(text)) return parsed;
+  const mid = myMapsId(text);
+  if (!mid) {
+    throw new Error('Ce fichier ne contient qu’un lien vers une carte en ligne, sans les points. Réexporte-le en décochant « Conserver les données à jour avec un lien réseau KML ».');
+  }
+  const full = parseKml(await fetchMyMaps(mid));
+  return { title: parsed.title ?? full.title, points: full.points };
+}
+
+/** Importe une carte Google My Maps à partir de son lien (celui qu'on partage ou qu'on copie dans le navigateur). */
+export async function readMyMapsLink(link: string): Promise<Parsed> {
+  const mid = myMapsId(link.trim());
+  if (!mid) throw new Error('Ce n’est pas un lien Google My Maps (il doit contenir « mid= »).');
+  return parseKml(await fetchMyMaps(mid));
+}
+
 /** Lit un fichier importé : .kml, .kmz (KML compressé, export par défaut de My Maps), .geojson, .json. */
-export async function readAccesFile(file: File): Promise<{ title: string | null; points: RawPoint[] }> {
+export async function readAccesFile(file: File): Promise<Parsed> {
   const lower = file.name.toLowerCase();
   const bytes = new Uint8Array(await file.arrayBuffer());
   const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
@@ -124,12 +174,16 @@ export async function readAccesFile(file: File): Promise<{ title: string | null;
     const files = unzipSync(bytes, { filter: (f) => f.name.toLowerCase().endsWith('.kml') });
     const kml = Object.keys(files).sort((a, b) => (a === 'doc.kml' ? -1 : b === 'doc.kml' ? 1 : a.localeCompare(b)))[0];
     if (!kml) throw new Error('Aucun fichier KML dans ce KMZ');
-    return parseKml(strFromU8(files[kml]));
+    return fromKml(strFromU8(files[kml]));
   }
   const text = strFromU8(bytes);
   if (lower.endsWith('.json') || lower.endsWith('.geojson') || text.trimStart().startsWith('{')) return parseGeoJson(text);
-  return parseKml(text);
+  return fromKml(text);
 }
+
+/** Fichier importé ou lien Google My Maps collé. */
+export const readAccesSource = (src: File | string): Promise<Parsed> =>
+  typeof src === 'string' ? readMyMapsLink(src) : readAccesFile(src);
 
 /** Rattache chaque point à la ligne la plus proche (moins de 300 m) et calcule son PK. */
 export async function snapAcces(points: RawPoint[]): Promise<Acces[]> {

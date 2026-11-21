@@ -32,3 +32,10 @@ Projet Supabase `repere-rail`, région Paris (eu-west-3).
 refus attendus (crée des comptes de test : à supprimer ensuite).
 
 La clé « publishable » écrite dans `app/src/lib/equipe/api.ts` est publique par nature.
+
+## Fonction `mymaps`
+
+Récupère le KML complet d'une carte Google My Maps à partir de son identifiant (`mid`), pour l'import des accès :
+les KMZ exportés avec « Conserver les données à jour avec un lien réseau KML » ne contiennent qu'un lien, et le
+navigateur ne peut pas lire Google directement. Elle ne relaie que `www.google.com/maps/d/kml` (pas d'autre site).
+La carte doit être partagée « Tous les utilisateurs disposant du lien ». Déployée avec `verify_jwt = false`.
