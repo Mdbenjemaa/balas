@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { myMapsId } from './mymaps';
+import { myMapsId, myMapsShortLink } from './mymaps';
 
 describe('myMapsId', () => {
   const mid = '1oeyXu-CaX1E22M5pai0_5YWSs0QeXzU';
@@ -14,5 +14,18 @@ describe('myMapsId', () => {
   });
   it('refuse ce qui n’est pas Google My Maps', () => {
     expect(myMapsId(`https://exemple.fr/maps/d/kml?mid=${mid}`)).toBe(null);
+  });
+});
+
+describe('myMapsShortLink', () => {
+  it('trouve le lien court du bouton Partager, même avec du texte autour', () => {
+    expect(myMapsShortLink('Accès RVB PSE03 2026 https://maps.app.goo.gl/Cq3meG54kmrjFR3X8?g_st=ic')).toBe(
+      'https://maps.app.goo.gl/Cq3meG54kmrjFR3X8?g_st=ic',
+    );
+    expect(myMapsShortLink('https://goo.gl/maps/AbCdEf123')).toBe('https://goo.gl/maps/AbCdEf123');
+  });
+  it('ignore les autres liens', () => {
+    expect(myMapsShortLink('https://exemple.fr/maps.app.goo.gl/x')).toBe(null);
+    expect(myMapsShortLink('https://goo.gl/AbCdEf')).toBe(null);
   });
 });

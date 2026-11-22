@@ -20,9 +20,9 @@ export function MyMapsLink({ busy, onSubmit }: { busy?: boolean; onSubmit: (link
       }}
     >
       <input
-        type="url"
+        type="text"
         inputMode="url"
-        placeholder="Colle le lien de la carte (google…/maps/d/…)"
+        placeholder="Colle le lien de la carte (maps.app.goo.gl/…)"
         value={link}
         onChange={(e) => setLink(e.target.value)}
         disabled={busy}

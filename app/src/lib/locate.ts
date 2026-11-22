@@ -104,23 +104,15 @@ export function matchInCells(cells: Cell[], p: LonLat, radius: number): Match {
   };
 }
 
-/**
- * Rayon de recherche : précision GPS + distance déclarée aux voies + marge.
- * Sans distance déclarée, on cherche plus large.
- */
-export function searchRadius(accuracy: number, declared: number | null): number {
+/** Rayon de recherche autour de la position : précision GPS + marge. */
+export function searchRadius(accuracy: number): number {
   const acc = Math.min(Math.max(accuracy, 3), 150);
-  return Math.round(declared === null ? Math.max(60, acc * 2 + 30) : Math.max(25, acc * 1.5 + declared + 15));
+  return Math.round(Math.max(60, acc * 2 + 30));
 }
 
-/**
- * Ligne retenue : avec une distance déclarée, celle dont l'écart mesuré colle le mieux ;
- * sinon la plus proche. Les autres restent proposées à l'écran.
- */
-export function pickLine(lines: LineCandidate[], declared: number | null): LineCandidate | null {
-  if (!lines.length) return null;
-  if (declared === null) return lines[0];
-  return [...lines].sort((a, b) => Math.abs(a.dist - declared) - Math.abs(b.dist - declared) || a.dist - b.dist)[0];
+/** Ligne retenue : la plus proche. Les autres restent proposées à l'écran. */
+export function pickLine(lines: LineCandidate[]): LineCandidate | null {
+  return lines[0] ?? null;
 }
 
 /**
@@ -130,12 +122,10 @@ export function pickLine(lines: LineCandidate[], declared: number | null): LineC
 export function pickFollowLine(
   lines: LineCandidate[],
   current: string | null | undefined,
-  declared: number | null,
   accuracy: number,
 ): LineCandidate | null {
-  const best = pickLine(lines, declared);
+  const best = pickLine(lines);
   const cur = current ? lines.find((l) => l.code === current) : undefined;
   if (!best || !cur || cur === best) return best;
-  const score = (l: LineCandidate) => (declared === null ? l.dist : Math.abs(l.dist - declared));
-  return score(cur) <= score(best) + Math.max(12, Math.min(accuracy, 40)) ? cur : best;
+  return cur.dist <= best.dist + Math.max(12, Math.min(accuracy, 40)) ? cur : best;
 }

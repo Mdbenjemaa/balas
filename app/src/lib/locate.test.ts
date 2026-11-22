@@ -44,7 +44,7 @@ describe('rattachement aux lignes (données réelles)', () => {
   it('retrouve la ligne et le PK du PN 35 de Willer-sur-Thur (ligne 130 000, PK 19+663)', () => {
     const p: [number, number] = [7.068403964258318, 47.843487148602506];
     const m = matchInCells(cellsFor(...p, 60), p, 60);
-    const best = pickLine(m.lines, null)!;
+    const best = pickLine(m.lines)!;
     expect(best.code).toBe('130000');
     expect(Math.abs(best.pk - 19.663) * 1000).toBeLessThan(30);
   });
@@ -57,18 +57,18 @@ describe('rattachement aux lignes (données réelles)', () => {
     expect(Math.abs(l!.pk - 5.5) * 1000).toBeLessThan(40);
   });
 
-  it('avec une distance déclarée, choisit la ligne qui colle le mieux', () => {
+  it('retient la ligne la plus proche', () => {
     const lines = [
-      { code: 'A', rg: '1', statut: 'E', dist: 4, pk: 1, point: [0, 0] as [number, number], bearing: 0 },
-      { code: 'B', rg: '1', statut: 'E', dist: 19, pk: 2, point: [0, 0] as [number, number], bearing: 0 },
+      { code: 'A', rg: '1', statut: 'E', dist: 4, pk: 1, pkRaw: 1, point: [0, 0] as [number, number], bearing: 0 },
+      { code: 'B', rg: '1', statut: 'E', dist: 19, pk: 2, pkRaw: 2, point: [0, 0] as [number, number], bearing: 0 },
     ];
-    expect(pickLine(lines, null)!.code).toBe('A');
-    expect(pickLine(lines, 20)!.code).toBe('B');
+    expect(pickLine(lines)!.code).toBe('A');
+    expect(pickLine([])).toBe(null);
   });
 
   it('élargit la recherche quand le GPS est imprécis', () => {
-    expect(searchRadius(5, 10)).toBeLessThan(searchRadius(40, 10));
-    expect(searchRadius(5, null)).toBeGreaterThanOrEqual(60);
+    expect(searchRadius(5)).toBeLessThan(searchRadius(40));
+    expect(searchRadius(5)).toBeGreaterThanOrEqual(60);
   });
 });
 
@@ -90,12 +90,12 @@ describe('éléments autour du PK (données réelles)', () => {
 describe('pickFollowLine', () => {
   const cand = (code: string, dist: number) => ({ code, rg: '', statut: '', dist, pk: 1, pkRaw: 1, point: [0, 0] as [number, number], bearing: 0 });
   it('reste sur la ligne suivie quand une autre ligne passe un peu plus près', () => {
-    expect(pickFollowLine([cand('B', 4), cand('A', 11)], 'A', null, 5)?.code).toBe('A');
+    expect(pickFollowLine([cand('B', 4), cand('A', 11)], 'A', 5)?.code).toBe('A');
   });
   it('change de ligne quand la ligne suivie s’éloigne nettement', () => {
-    expect(pickFollowLine([cand('B', 3), cand('A', 45)], 'A', null, 5)?.code).toBe('B');
+    expect(pickFollowLine([cand('B', 3), cand('A', 45)], 'A', 5)?.code).toBe('B');
   });
   it('prend la meilleure ligne quand la ligne suivie n’est plus proche', () => {
-    expect(pickFollowLine([cand('B', 3)], 'A', null, 5)?.code).toBe('B');
+    expect(pickFollowLine([cand('B', 3)], 'A', 5)?.code).toBe('B');
   });
 });

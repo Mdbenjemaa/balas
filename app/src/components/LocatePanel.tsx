@@ -24,20 +24,10 @@ export type LocateState =
       doc: LineDoc | null;
     };
 
-export const DISTANCES: { value: number | null; label: string }[] = [
-  { value: null, label: 'Je ne sais pas' },
-  { value: 0, label: 'Sur la voie' },
-  { value: 5, label: '5 m' },
-  { value: 10, label: '10 m' },
-  { value: 15, label: '15 m' },
-  { value: 20, label: '20 m' },
-];
-
 interface Props {
   state: LocateState;
   manifest: Manifest | null;
   filters: Filters;
-  declared: number | null;
   expanded: boolean;
   following: boolean;
   /** PK lissé pendant le suivi. */
@@ -48,7 +38,6 @@ interface Props {
   onToggleFollow?: () => void;
   onRecenter?: () => void;
   onToggleExpand: () => void;
-  onDeclared: (d: number | null) => void;
   onChoose: (code: string) => void;
   onGoPk: (code: string, text: string) => void;
   acces: AccesSet[];
@@ -236,8 +225,6 @@ export function LocatePanel(p: Props) {
   const ecart = doc && chosen ? sectionAt(doc, 'ecart', chosen.pk) : null;
   const statut = doc && chosen ? statutAt(doc, chosen.pk) : null;
   const others = match.lines.filter((l) => l.code !== chosen?.code);
-  const declaredMismatch =
-    chosen && p.declared !== null && Math.abs(chosen.dist - p.declared) > Math.max(10, fix.accuracy * 1.5);
 
   return (
     <section className={`sheet ${p.expanded ? 'sheet-full' : 'sheet-peek'}`} aria-live="polite">
@@ -313,20 +300,6 @@ export function LocatePanel(p: Props) {
             <button className="btn btn-small" onClick={p.onRepere}>Poser un repère ici</button>
           </div>
         )}
-        <div className="field-label">Ma distance aux voies</div>
-        <div className="chips">
-          {DISTANCES.map((d) => (
-            <button key={String(d.value)} className={`chip ${p.declared === d.value ? 'on' : ''}`} onClick={() => p.onDeclared(d.value)}>
-              {d.label}
-            </button>
-          ))}
-        </div>
-        {declaredMismatch && (
-          <p className="warn">
-            La ligne est mesurée à {Math.round(chosen!.dist)} m, loin des {p.declared} m indiqués : vérifie la ligne ci-dessous.
-          </p>
-        )}
-
         {tracks.length > 0 && (
           <p className="muted small">
             Voie la plus proche (indicatif) :{' '}

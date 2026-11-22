@@ -313,7 +313,7 @@ export function InfoSheet(p: { manifest: Manifest | null; onClose: () => void })
       <h3>Astuces</h3>
       <ul className="small">
         <li>« Me repérer » écoute le GPS jusqu’à 12 s et combine les mesures : reste immobile, à découvert.</li>
-        <li>Indique ta distance aux voies : l’appli choisit mieux entre deux lignes proches.</li>
+        <li>Deux lignes proches : si ce n’est pas la bonne, touche la tienne dans « Autres lignes proches ».</li>
         <li>Appui long sur la carte : « me placer ici » (utile si le GPS est mauvais, ou pour préparer une intervention).</li>
         <li>Touche un élément de la carte pour voir son PK et sa ligne.</li>
       </ul>

@@ -1,6 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { SB_KEY, SB_URL } from './equipe/api';
-import { myMapsId } from './mymaps';
+import { myMapsId, myMapsShortLink } from './mymaps';
 
 export { myMapsId };
 import type { FeatureCollection } from 'geojson';
@@ -124,16 +124,17 @@ const MYMAPS_ERR: Record<string, string> = {
     'La carte Google My Maps n’est pas partagée. Dans My Maps : Partager › « Tous les utilisateurs disposant du lien peuvent afficher », puis recommence.',
   introuvable: 'Carte Google My Maps introuvable : le lien est incorrect ou la carte a été supprimée.',
   trop_gros: 'Cette carte Google My Maps est trop grosse pour être importée.',
+  lien: 'Ce lien ne mène pas à une carte Google My Maps. Ouvre la carte, touche Partager et copie son lien.',
 };
 
 /** Va chercher le KML complet d'une carte Google My Maps (par le serveur de l'appli : le navigateur ne peut pas lire Google). */
-export async function fetchMyMaps(mid: string): Promise<string> {
+export async function fetchMyMaps(src: { mid: string } | { link: string }): Promise<string> {
   const offline = 'Pas de réseau : il en faut pour aller chercher les points sur Google My Maps. Réessaie quand tu as du réseau.';
   if (!navigator.onLine) throw new Error(offline);
   const res = await fetch(`${SB_URL}/functions/v1/mymaps`, {
     method: 'POST',
     headers: { apikey: SB_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mid }),
+    body: JSON.stringify(src),
   }).catch(() => null);
   if (!res) throw new Error(offline);
   const d = (await res.json().catch(() => ({}))) as { kml?: string; error?: string };
@@ -154,15 +155,18 @@ async function fromKml(text: string): Promise<Parsed> {
   if (!mid) {
     throw new Error('Ce fichier ne contient qu’un lien vers une carte en ligne, sans les points. Réexporte-le en décochant « Conserver les données à jour avec un lien réseau KML ».');
   }
-  const full = parseKml(await fetchMyMaps(mid));
+  const full = parseKml(await fetchMyMaps({ mid }));
   return { title: parsed.title ?? full.title, points: full.points };
 }
 
 /** Importe une carte Google My Maps à partir de son lien (celui qu'on partage ou qu'on copie dans le navigateur). */
 export async function readMyMapsLink(link: string): Promise<Parsed> {
-  const mid = myMapsId(link.trim());
-  if (!mid) throw new Error('Ce n’est pas un lien Google My Maps (il doit contenir « mid= »).');
-  return parseKml(await fetchMyMaps(mid));
+  const mid = myMapsId(link);
+  if (mid) return parseKml(await fetchMyMaps({ mid }));
+  // Lien court du bouton Partager (maps.app.goo.gl) : le serveur le suit jusqu'à la carte.
+  const short = myMapsShortLink(link);
+  if (short) return parseKml(await fetchMyMaps({ link: short }));
+  throw new Error('Ce n’est pas un lien Google My Maps. Ouvre la carte dans Google Maps, touche Partager, puis colle le lien ici.');
 }
 
 /** Lit un fichier importé : .kml, .kmz (KML compressé, export par défaut de My Maps), .geojson, .json. */

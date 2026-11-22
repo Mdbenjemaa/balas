@@ -47,7 +47,6 @@ export default function App() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(() => ({ ...DEFAULT_FILTERS, ...loadPref<Partial<Filters>>('rr-filters', {}) }));
   const [basemap, setBasemap] = useState<Basemap>(() => loadPref<Basemap>('rr-basemap', 'plan'));
-  const [declared, setDeclared] = useState<number | null>(() => loadPref<number | null>('rr-distance', null));
   const [ack, setAck] = useState(() => loadPref('rr-ack-v1', false));
   const [panel, setPanel] = useState<Panel>('none');
   const [loc, setLoc] = useState<LocateState>({ phase: 'idle' });
@@ -138,7 +137,14 @@ export default function App() {
   }, []);
   useEffect(() => savePref('rr-filters', filters), [filters]);
   useEffect(() => savePref('rr-basemap', basemap), [basemap]);
-  useEffect(() => savePref('rr-distance', declared), [declared]);
+  // Ancien réglage « Ma distance aux voies », supprimé : on efface ce qui restait sur le téléphone.
+  useEffect(() => {
+    try {
+      localStorage.removeItem('rr-distance');
+    } catch {
+      /* rien */
+    }
+  }, []);
 
   const focusOn = useCallback((center: LonLat, zoom?: number) => setFocus((f) => ({ center, zoom, seq: (f?.seq ?? 0) + 1 })), []);
 
@@ -147,7 +153,7 @@ export default function App() {
     async (fix: Fix, mode: 'gps' | 'manuel' | 'suivi', forcedCode?: string, recenter = true, prefer?: string | null): Promise<LineCandidate | null> => {
       const m = manifest ?? (await loadManifest());
       lastFix.current = { fix, mode, forced: forcedCode };
-      const radius = searchRadius(fix.accuracy, declared);
+      const radius = searchRadius(fix.accuracy);
       const known = new Set(m.cells);
       const cells = (
         await Promise.all(cellsAround(fix.lonlat, radius, m.cellsPerDegree).map((k) => loadCell(k, known)))
@@ -155,23 +161,15 @@ export default function App() {
       const match = matchInCells(cells, fix.lonlat, radius);
       const chosen =
         (forcedCode && match.lines.find((l) => l.code === forcedCode)) ||
-        (mode === 'suivi' ? pickFollowLine(match.lines, prefer, declared, fix.accuracy) : pickLine(match.lines, declared));
+        (mode === 'suivi' ? pickFollowLine(match.lines, prefer, fix.accuracy) : pickLine(match.lines));
       const doc = chosen ? await loadLine(chosen.code).catch(() => null) : null;
       setLoc({ phase: 'result', fix, mode, radius, match, chosen: chosen ?? null, doc });
       setMe(meFeatures(fix.lonlat, fix.accuracy, chosen?.point ?? null));
       if (recenter) focusOn(fix.lonlat, mode === 'suivi' ? undefined : 17);
       return chosen ?? null;
     },
-    [manifest, declared, focusOn],
+    [manifest, focusOn],
   );
-
-  // Changer la distance déclarée relance le calcul sur la même position.
-  useEffect(() => {
-    if (lastFix.current && loc.phase === 'result') {
-      void analyse(lastFix.current.fix, lastFix.current.mode, undefined, false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [declared]);
 
   // Nouvelle correction de PK : on recalcule le PK affiché à la même position.
   useEffect(() => {
@@ -617,7 +615,6 @@ export default function App() {
         state={loc}
         manifest={manifest}
         filters={filters}
-        declared={declared}
         expanded={expanded}
         following={following}
         followPk={followPk}
@@ -626,7 +623,6 @@ export default function App() {
         onToggleFollow={PREVIEW ? undefined : toggleFollow}
         onRecenter={recenter}
         onToggleExpand={() => setExpanded((e) => !e)}
-        onDeclared={setDeclared}
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}
         onGoPk={(code, text) => void goToPk(code, text)}
         acces={acces}
