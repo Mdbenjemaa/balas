@@ -16,13 +16,14 @@ vitesse…). Elle marche sur iPhone et Android, **même sans réseau** une fois 
 | Voie la plus proche | Nom SNCF des voies proches (V1, V2, 1, 2BIS…), à titre indicatif (le GPS d'un téléphone se trompe souvent de 5 à 10 m) |
 | Autour de moi | Éléments vers les PK croissants et décroissants, avec distance et PK ; « vous êtes dans » pour un tunnel ou un quai |
 | Caractéristiques au PK | Statut, vitesse nominale, électrification, cantonnement, KVB, écartement |
-| Aller au PK | Depuis ma position (« Aller au PK » sous le PK affiché) ou par la recherche (« 830000 45+200 ») : le PK sur la carte, la distance le long de la ligne et le sens, ce qu'il y a autour, et un itinéraire en voiture (Plans, Google Maps, Waze) |
+| Aller au PK | Depuis ma position (« Aller au PK » sous le PK affiché) ou par la recherche (« 830000 45+200 ») : le PK sur la carte, la distance le long de la ligne et le sens, ce qu'il y a autour, et un itinéraire en voiture (Google Maps) |
 | Mes accès | Import d'une carte d'accès Google My Maps : fichier KML ou KMZ (y compris un KMZ qui ne contient qu'un « lien réseau » vers la carte : l'appli va chercher les points), lien de la carte collé directement (y compris le lien court maps.app.goo.gl du bouton Partager), ou GeoJSON. Chaque accès reçoit sa ligne et son PK, apparaît sur la carte et dans les listes, et peut servir de destination. Les accès restent dans le téléphone : ils ne sont ni envoyés ni publiés |
 | Connexion et espace chantier | Page de connexion au démarrage : code personnel, ou « Continuer sans compte » pour la carte seule. Le lien reçu par SMS ou WhatsApp (`…#code=XXXX`) connecte directement. Une fois connecté : accueil en tuiles et onglets en bas (chef : Accueil · Carte · Signalements · Équipe ; agent : Accueil · Carte · Signalements ; administrateur : Accueil · Carte · Chefs · Corrections). Le chef ajoute un agent en deux écrans (nom, fonction, chantier, puis envoi du code par SMS ou WhatsApp), prépare la carte (zones, accès, panneaux, import KML ou lien My Maps), fait ses rapports de poste signés en PDF et exporte en Excel. Signalements suivis : Nouveau › En cours › Traité, confiés à un agent ; seuls le chef et l'agent désigné les font avancer, même sans réseau (envoi au retour du réseau). Thème bleu marine et orange, mode sombre selon le téléphone ; sur ordinateur, la carte reste visible à gauche |
 | Corriger le PK | Devant une borne, « Corriger ici » : on tape le PK de la borne. La correction s'applique tout de suite sur le téléphone, recale les PK de la ligne autour (1,5 km, ou toute la ligne si l'administrateur le choisit) et part à l'administrateur, qui la valide pour tous |
 | Suivre le PK en direct | Après « Me repérer », bouton « Suivre le PK en direct » : le point GPS se déplace avec toi et un gros compteur PK au mètre défile, à pied comme en véhicule (lissage du GPS, sens ▲/▼ des PK, reste sur la ligne suivie aux bifurcations). La carte reste libre : elle ne bouge que si ton point va sortir de l'écran, et « Recentrer » revient sur toi après l'avoir déplacée. L'écran reste allumé pendant le suivi |
 | Me placer ici | Appui long sur la carte : repérage sans GPS (préparer une intervention, GPS mauvais) |
 | Carte et filtres | PK tous les 100 m, bornes OSM, gares, quais, voies et numéros, PN, tunnels, ponts, sous-stations, carrés et sémaphores, avertissements, TIV et pancartes Z/R, signaux électriques, vitesses et électrification en couleurs ; fond plan ou photo aérienne IGN |
+| Signaux dessinés | Carrés, sémaphores, carrés violets, avertissements, mirlitons, TIV avec leur vitesse, pancartes Z et R, chevrons, sectionnement, REV, coupez courant, baissez panto, fin de caténaire… apparaissent sur la carte avec leur vrai dessin (bibliothèque signalisation-rfn-svg) ; en touchant un signal, sa fiche le montre en grand. Les signaux sans dessin connu restent des pastilles de couleur. |
 | Hors-ligne | Un bouton télécharge toute la France (≈ 45 Mo) ; le fond de carte n'est gardé que pour les zones déjà affichées |
 
 ## Précision des PK
@@ -106,3 +107,16 @@ Les données dérivées de `app/public/data` combinent ces sources : elles sont 
 **ODbL**, avec mention des sources ci-dessus.
 
 Projet personnel, indépendant de la SNCF.
+
+## Licence
+
+Code sous licence **GPL-3.0** (fichier `LICENSE`).
+
+Les dessins de la signalisation (carrés, sémaphores, avertissements, TIV, pancartes…) viennent de la bibliothèque
+[signalisation-rfn-svg](https://github.com/nicolaswurtz/signalisation-rfn-svg) de Nicolas Wurtz, sous licence GPL-3.0
+(copie dans `app/public/signaux/LICENSE.txt`). Seuls les dessins utilisés par les données sont repris
+(`scripts/build_signal_assets.py`). Chaque signal OpenStreetMap reçoit le nom de son dessin dans la chaîne de données
+(`data-pipeline/build_products.py`, liste `data-pipeline/rfn_icons.txt`).
+
+Données : © SNCF Réseau (open data), © contributeurs OpenStreetMap (ODbL), fond plan OpenFreeMap / OpenMapTiles,
+photo aérienne © IGN.

@@ -51,6 +51,7 @@ export default function App() {
   const [panel, setPanel] = useState<Panel>('none');
   const [loc, setLoc] = useState<LocateState>({ phase: 'idle' });
   const [expanded, setExpanded] = useState(false);
+  const [typeFiltre, setTypeFiltre] = useState(() => loadPref<string>('rr-type-filtre', 'tout'));
   const [following, setFollowing] = useState(false);
   const [followPk, setFollowPk] = useState<PkEstimate | null>(null);
   const [followAt, setFollowAt] = useState<LonLat | null>(null);
@@ -626,6 +627,11 @@ export default function App() {
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}
         onGoPk={(code, text) => void goToPk(code, text)}
         acces={acces}
+        typeFiltre={typeFiltre}
+        onTypeFiltre={(k) => {
+          setTypeFiltre(k);
+          savePref('rr-type-filtre', k);
+        }}
         onCorrect={() => {
           if (loc.phase !== 'result' || !loc.chosen) return;
           setCorrTarget({
