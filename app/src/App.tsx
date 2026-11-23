@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FeatureCollection } from 'geojson';
 import type { MapGeoJSONFeature } from 'maplibre-gl';
 import { LocatePanel, type LocateState } from './components/LocatePanel';
-import { Disclaimer, FeatureCard, FilterSheet, InfoSheet, OfflineSheet, Search, type ImportStatus } from './components/Sheets';
+import { AccesSheet, Disclaimer, FeatureCard, FilterSheet, InfoSheet, OfflineSheet, Search, type ImportStatus } from './components/Sheets';
 import { TargetSheet, type Origin, type TargetState } from './components/TargetSheet';
 import { accesFeature, accesFeatures, findAccesAt, loadAcces, readAccesSource, saveAcces, snapAcces, type AccesSet } from './lib/acces';
 import { fmtLine, fmtPk } from './lib/format';
@@ -39,7 +39,7 @@ import { envoyerEnAttente, onCorrections, refreshCorrections } from './lib/corre
 import { correctedPkMarks } from './lib/pkmarks';
 import type { Basemap } from './map/style';
 
-type Panel = 'none' | 'filters' | 'offline' | 'info' | 'signal' | 'repere' | 'rapport' | 'correction';
+type Panel = 'none' | 'filters' | 'offline' | 'info' | 'signal' | 'repere' | 'rapport' | 'correction' | 'acces';
 const TEAM_LAYERS = new Set(['u-sig', 'u-rep', 'u-zone']);
 
 export default function App() {
@@ -64,8 +64,6 @@ export default function App() {
   const [target, setTarget] = useState<TargetState | null>(null);
   const [targetExpanded, setTargetExpanded] = useState(false);
   const [acces, setAcces] = useState<AccesSet[]>(() => loadAcces());
-  /** Recherche pré-remplie (« Liste » d'un fichier d'accès) : la barre repart avec ce texte. */
-  const [searchPreset, setSearchPreset] = useState({ q: '', seq: 0 });
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -428,6 +426,16 @@ export default function App() {
     setImportStatus(null);
   };
 
+  /** Un de mes accès (recherche ou liste) : on l'affiche avec sa fiche (nom, PK, itinéraire). */
+  const openAcces = (at: LonLat) => {
+    const hit = findAccesAt(acces, at);
+    setPanel('none');
+    setFilters((f) => (f.acces ? f : { ...f, acces: true }));
+    if (hit) setPicked({ f: { ...accesFeature(hit.a, hit.set.name), layer: { id: 'u-acces' } } as unknown as MapGeoJSONFeature, at });
+    if (stopFollow.current) setMapFree(true);
+    focusOn(at, 17);
+  };
+
   const showSet = (set: AccesSet) => {
     if (!set.items.length) return;
     const lon = set.items.reduce((a, x) => a + x.lonlat[0], 0) / set.items.length;
@@ -536,23 +544,22 @@ export default function App() {
         onMapTap={() => setPicked(null)}
       />
 
+      <button className="fab-acces" onClick={() => setPanel('acces')} aria-label="Mes accès : afficher, chercher, importer">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+          <path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21M3 21h18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="14.5" cy="12.5" r="1.3" fill="currentColor" />
+        </svg>
+        <span>Accès</span>
+      </button>
+
       <header className="topbar">
         <Search
-          key={searchPreset.seq}
-          initialQuery={searchPreset.q}
           manifest={manifest}
           currentLine={(loc.phase === 'result' && loc.chosen?.code) || eq.etat?.chantier.ligne || null}
           acces={acces}
           onGo={focusOn}
           onPk={(code, pk) => void goToPk(code, pk)}
-          onAcces={(at) => {
-            // Un de mes accès : on l'affiche avec sa fiche (nom, PK, itinéraire).
-            const hit = findAccesAt(acces, at);
-            setFilters((f) => (f.acces ? f : { ...f, acces: true }));
-            if (hit) setPicked({ f: { ...accesFeature(hit.a, hit.set.name), layer: { id: 'u-acces' } } as unknown as MapGeoJSONFeature, at });
-            if (stopFollow.current) setMapFree(true);
-            focusOn(at, 17);
-          }}
+          onAcces={openAcces}
         />
         <button className="icon-btn raised" onClick={() => setPanel('filters')} aria-label="Couches et fond de carte">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -668,15 +675,20 @@ export default function App() {
           basemap={basemap}
           onToggle={toggleFilter}
           onBasemap={setBasemap}
-          acces={acces}
-          importStatus={importStatus}
+          onOpenAcces={() => setPanel('acces')}
+          onClose={() => setPanel('none')}
+        />
+      )}
+      {panel === 'acces' && (
+        <AccesSheet
+          sets={acces}
+          shown={filters.acces}
+          onToggleShown={() => toggleFilter('acces')}
+          status={importStatus}
           onImport={(src) => void importAcces(src)}
           onDeleteSet={deleteSet}
           onShowSet={showSet}
-          onListSet={(set) => {
-            setPanel('none');
-            setSearchPreset((s) => ({ q: set.name, seq: s.seq + 1 }));
-          }}
+          onPick={openAcces}
           onClose={() => setPanel('none')}
         />
       )}
