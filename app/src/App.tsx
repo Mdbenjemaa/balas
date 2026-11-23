@@ -400,6 +400,8 @@ export default function App() {
     };
   }, [target]);
   const accesFC = useMemo(() => accesFeatures(acces), [acces]);
+  /** Listes d'accès activées : les seules affichées sur la carte, dans les recherches et autour du PK. */
+  const accesOn = useMemo(() => acces.filter((s) => !s.hidden), [acces]);
 
   const importAcces = async (src: File | string) => {
     setImportStatus({ busy: true, text: '' });
@@ -426,9 +428,18 @@ export default function App() {
     setImportStatus(null);
   };
 
+  /** Active ou désactive une liste d'accès (gardé sur le téléphone). */
+  const toggleSet = (id: string) => {
+    const next = acces.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s));
+    saveAcces(next);
+    setAcces(next);
+  };
+
   /** Un de mes accès (recherche ou liste) : on l'affiche avec sa fiche (nom, PK, itinéraire). */
   const openAcces = (at: LonLat) => {
     const hit = findAccesAt(acces, at);
+    // Accès d'une liste désactivée (vu dans « Mes accès ») : on réactive sa liste pour qu'il apparaisse.
+    if (hit?.set.hidden) toggleSet(hit.set.id);
     setPanel('none');
     setFilters((f) => (f.acces ? f : { ...f, acces: true }));
     if (hit) setPicked({ f: { ...accesFeature(hit.a, hit.set.name), layer: { id: 'u-acces' } } as unknown as MapGeoJSONFeature, at });
@@ -556,7 +567,7 @@ export default function App() {
         <Search
           manifest={manifest}
           currentLine={(loc.phase === 'result' && loc.chosen?.code) || eq.etat?.chantier.ligne || null}
-          acces={acces}
+          acces={accesOn}
           onGo={focusOn}
           onPk={(code, pk) => void goToPk(code, pk)}
           onAcces={openAcces}
@@ -620,7 +631,7 @@ export default function App() {
         <TargetSheet
           target={target}
           origin={origin}
-          acces={acces}
+          acces={accesOn}
           filters={filters}
           expanded={targetExpanded}
           onToggleExpand={() => setTargetExpanded((e) => !e)}
@@ -646,7 +657,7 @@ export default function App() {
         onToggleExpand={() => setExpanded((e) => !e)}
         onChoose={(code) => lastFix.current && void analyse(lastFix.current.fix, lastFix.current.mode, code, false)}
         onGoPk={(code, text) => void goToPk(code, text)}
-        acces={acces}
+        acces={accesOn}
         typeFiltre={typeFiltre}
         onTypeFiltre={(k) => {
           setTypeFiltre(k);
@@ -688,6 +699,7 @@ export default function App() {
           onImport={(src) => void importAcces(src)}
           onDeleteSet={deleteSet}
           onShowSet={showSet}
+          onToggleSet={toggleSet}
           onPick={openAcces}
           onClose={() => setPanel('none')}
         />
